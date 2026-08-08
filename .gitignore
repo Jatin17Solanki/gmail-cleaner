@@ -23,6 +23,9 @@ Thumbs.db
 # Personal notes (not committed)
 IMPROVEMENTS.md
 
+# Fork planning spec (needed on disk for Claude Code, not for public history)
+PRD.md
+
 # Test/Coverage artifacts
 .coverage
 .pytest_cache/

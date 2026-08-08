@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gmail Cleanup — Filter drawer</title>
+<link rel="stylesheet" href="design-system.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="frame-note">Reference: Filter drawer, open state (Phase 3). Apply triggers the (re)scan — there is no separate rescan banner, per PRD Section 6, Phase 3.</div>
+<div class="app-shell" style="position:relative">
+  <div class="sidebar">
+    <div class="brand"><i class="ti ti-mail"></i>Cleanup</div>
+    <a class="nav-item active"><i class="ti ti-trash"></i>Delete</a>
+    <a class="nav-item"><i class="ti ti-mail-opened"></i>Mark as read</a>
+    <a class="nav-item"><i class="ti ti-archive"></i>Archive</a>
+    <a class="nav-item"><i class="ti ti-repeat"></i>Routines</a>
+    <a class="nav-item"><i class="ti ti-history"></i>Restore</a>
+  </div>
+  <div class="content" style="filter:blur(1.5px);opacity:0.5">
+    <div class="topbar"><button class="btn"><i class="ti ti-adjustments-horizontal"></i>Filters</button></div>
+    <div class="list-area"><div class="row"><div style="flex:1"><div class="meta-title">marketing@amazon.in</div><div class="meta-sub">47 emails</div></div></div></div>
+  </div>
+  <div style="position:absolute;top:0;right:0;bottom:0;width:270px;background:var(--bg-surface);border-left:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span class="heading" style="font-size:14px">Filters</span>
+      <i class="ti ti-x" style="color:var(--text-muted)"></i>
+    </div>
+    <div><div class="label-11">Received within</div><select style="width:100%"><option>90 days</option></select></div>
+    <div><div class="label-11">Category</div><select style="width:100%"><option>Inbox</option></select></div>
+    <div><div class="label-11">Sender</div><input type="text" style="width:100%" placeholder="email@domain.com"></div>
+    <div><div class="label-11">Label</div><select style="width:100%"><option>All labels</option></select></div>
+    <div><div class="label-11">Larger than</div><select style="width:100%"><option>Any size</option></select></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox">Unread only</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox">Has attachment</label>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn" style="flex:1;justify-content:center">Clear</button>
+      <button class="btn btn-primary" style="flex:1;justify-content:center">Apply</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

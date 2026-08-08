@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gmail Cleanup — Restore</title>
+<link rel="stylesheet" href="design-system.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="frame-note">Reference: Restore view (Phase 2). App-scoped operation log, not full Gmail Trash — see PRD Section 6, Phase 2.</div>
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand"><i class="ti ti-mail"></i>Cleanup</div>
+    <a class="nav-item"><i class="ti ti-trash"></i>Delete</a>
+    <a class="nav-item"><i class="ti ti-mail-opened"></i>Mark as read</a>
+    <a class="nav-item"><i class="ti ti-archive"></i>Archive</a>
+    <a class="nav-item"><i class="ti ti-repeat"></i>Routines</a>
+    <a class="nav-item active"><i class="ti ti-history"></i>Restore</a>
+  </div>
+  <div class="content">
+    <div style="padding:14px 18px 0;font-size:11px;color:var(--text-muted)">Showing actions from the last 30 days</div>
+    <div class="list-area">
+      <div class="row">
+        <div style="flex:1">
+          <div class="meta-title">Deleted 47 emails · marketing@amazon.in</div>
+          <div class="meta-sub">Manual delete · today, 2:14 PM</div>
+        </div>
+        <button class="btn"><i class="ti ti-rotate"></i> Restore</button>
+      </div>
+      <div class="row">
+        <div style="flex:1">
+          <div class="meta-title">Deleted 41 emails · 3 senders</div>
+          <div class="meta-sub">Routine: Market newsletters · 2 days ago</div>
+        </div>
+        <button class="btn"><i class="ti ti-rotate"></i> Restore</button>
+      </div>
+      <div class="row">
+        <div style="flex:1">
+          <div class="meta-title">Labeled 12 emails "Security" · no-reply@amazon.in</div>
+          <div class="meta-sub">Manual label · 5 days ago</div>
+        </div>
+        <button class="btn"><i class="ti ti-rotate"></i> Restore</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gmail Cleanup — Account switcher</title>
+<link rel="stylesheet" href="design-system.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="frame-note">Reference: Account switcher, open state (Phase 4a). Lives in the topbar of every view; one account active at a time — see PRD Section 5 and Phase 4a.</div>
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand"><i class="ti ti-mail"></i>Cleanup</div>
+    <a class="nav-item active"><i class="ti ti-trash"></i>Delete</a>
+    <a class="nav-item"><i class="ti ti-mail-opened"></i>Mark as read</a>
+    <a class="nav-item"><i class="ti ti-archive"></i>Archive</a>
+    <a class="nav-item"><i class="ti ti-repeat"></i>Routines</a>
+    <a class="nav-item"><i class="ti ti-history"></i>Restore</a>
+  </div>
+  <div class="content" style="position:relative">
+    <div class="topbar" style="justify-content:flex-end">
+      <div style="width:240px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:13px;border:1px solid var(--border-strong);border-radius:var(--radius);padding:6px 10px">
+          <i class="ti ti-user-circle" style="color:var(--accent)"></i>experiments.jatin@gmail.com
+          <i class="ti ti-chevron-down" style="margin-left:auto;color:var(--text-muted)"></i>
+        </div>
+        <div style="border:1px solid var(--border-strong);border-top:none;border-radius:0 0 var(--radius) var(--radius);position:absolute;width:240px;right:18px;background:var(--bg-surface)">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12px;color:var(--accent-text);background:var(--accent-bg)"><i class="ti ti-check"></i>experiments.jatin@gmail.com</div>
+          <div class="divider" style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12px;color:var(--text-secondary)">jatin.personal@gmail.com</div>
+          <div class="divider" style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12px;color:var(--accent-text)"><i class="ti ti-plus"></i>Add another account</div>
+        </div>
+      </div>
+    </div>
+    <div class="list-area">
+      <div class="row"><div style="flex:1"><div class="meta-title">marketing@amazon.in</div><div class="meta-sub">47 emails</div></div></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

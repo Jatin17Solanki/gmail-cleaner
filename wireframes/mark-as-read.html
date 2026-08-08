@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gmail Cleanup — Mark as read</title>
+<link rel="stylesheet" href="design-system.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="frame-note">Reference: Mark as read view (Phase 3). Structurally identical to Delete, minus the Unsubscribe toggle; Label/Important remain inline.</div>
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand"><i class="ti ti-mail"></i>Cleanup</div>
+    <a class="nav-item"><i class="ti ti-trash"></i>Delete</a>
+    <a class="nav-item active"><i class="ti ti-mail-opened"></i>Mark as read</a>
+    <a class="nav-item"><i class="ti ti-archive"></i>Archive</a>
+    <a class="nav-item"><i class="ti ti-repeat"></i>Routines</a>
+    <a class="nav-item"><i class="ti ti-history"></i>Restore</a>
+  </div>
+  <div class="content">
+    <div class="topbar">
+      <button class="btn"><i class="ti ti-adjustments-horizontal"></i>Filters <span class="badge badge-accent">1</span></button>
+      <span class="chip">Unread only</span>
+      <span class="chip">Category: Inbox</span>
+    </div>
+    <div class="list-area">
+      <div class="row">
+        <input type="checkbox" checked>
+        <div style="flex:1"><div class="meta-title">linkedin.com</div><div class="meta-sub">37 emails</div></div>
+        <i class="ti ti-tag" style="color:var(--text-muted)"></i>
+        <i class="ti ti-star" style="color:var(--text-muted)"></i>
+        <i class="ti ti-chevron-down" style="color:var(--text-muted)"></i>
+      </div>
+      <div class="row">
+        <input type="checkbox">
+        <div style="flex:1"><div class="meta-title">notifications@slack.com</div><div class="meta-sub">18 emails</div></div>
+        <i class="ti ti-tag" style="color:var(--text-muted)"></i>
+        <i class="ti ti-star" style="color:var(--text-muted)"></i>
+        <i class="ti ti-chevron-down" style="color:var(--text-muted)"></i>
+      </div>
+    </div>
+    <div class="actions-bar">
+      <span style="font-size:12px;color:var(--text-secondary)">37 emails selected</span>
+      <button class="btn btn-primary"><i class="ti ti-mail-opened"></i> Mark selected as read</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

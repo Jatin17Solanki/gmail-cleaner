@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gmail Cleanup — New routine</title>
+<link rel="stylesheet" href="design-system.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="frame-note">Reference: New routine form (Phase 4b). Multi-action, single-account scoped, schema leaves room for a future schedule field (unused for now) — see PRD Section 6, Phase 4b.</div>
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand"><i class="ti ti-mail"></i>Cleanup</div>
+    <a class="nav-item"><i class="ti ti-trash"></i>Delete</a>
+    <a class="nav-item"><i class="ti ti-mail-opened"></i>Mark as read</a>
+    <a class="nav-item"><i class="ti ti-archive"></i>Archive</a>
+    <a class="nav-item active"><i class="ti ti-repeat"></i>Routines</a>
+    <a class="nav-item"><i class="ti ti-history"></i>Restore</a>
+  </div>
+  <div class="content" style="padding:20px">
+    <div class="card" style="max-width:380px;display:flex;flex-direction:column;gap:14px">
+      <div class="heading" style="font-size:16px">New routine</div>
+      <div>
+        <div class="label-11">Name</div>
+        <input type="text" style="width:100%" placeholder="Market newsletters">
+      </div>
+      <div>
+        <div class="label-11">Senders</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="chip">premarket@xyz.com <i class="ti ti-x" style="font-size:11px"></i></span>
+          <span class="chip">closingbell@xyz.com <i class="ti ti-x" style="font-size:11px"></i></span>
+          <span class="chip" style="color:var(--accent-text);border-style:dashed;border-color:var(--accent-text)">+ Add sender</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:18px">
+        <div>
+          <div class="label-11">Older than</div>
+          <select><option>7 days</option><option>30 days</option></select>
+        </div>
+        <div>
+          <div class="label-11">Actions</div>
+          <div style="display:flex;gap:12px;font-size:12px">
+            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" checked style="width:13px;height:13px">Delete</label>
+            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" style="width:13px;height:13px">Label</label>
+            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" style="width:13px;height:13px">Archive</label>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn">Cancel</button>
+        <button class="btn btn-primary">Save routine</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

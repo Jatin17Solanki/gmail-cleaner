@@ -30,6 +30,8 @@ A **free**, privacy-focused tool to bulk unsubscribe from emails, delete emails 
 | **Super Fast** | Gmail API with batch requests (100 emails per API call) |
 | **Gmail-style UI** | Clean, familiar interface with real-time progress tracking |
 
+> Looking for what's coming next? See [This Fork's Roadmap](#️-this-forks-roadmap) below.
+
 ## Platform Support
 
 Works on **all major platforms** - both Docker and local installation:
@@ -68,6 +70,56 @@ Book a Setup Session Here - mail me at guruvelu85@gmail.com, i will reply and se
 ## Feature Requests
 
 Lets make this tool a better one by improving as much as possible, All features are welcome, To request a feature, [open a GitHub issue](https://github.com/Gururagavendra/gmail-cleaner/issues/new).
+
+## 🗺️ This Fork's Roadmap
+
+> This section reflects fixes and features planned for **this fork** specifically — not the upstream project's official roadmap. Status is updated as work lands. If you're building on this fork with an AI coding assistant, the full spec behind this roadmap lives in `PRD.md` at the repo root.
+
+### Correctness & safety fixes
+
+| Item | Description | Status |
+|---|---|---|
+| Delete respects active filters | Deleting emails from a sender currently ignores the date/category filters used to find them — fixed to route through the existing query builder instead of a bare sender query | Planned |
+| Inbox-scoped by default | Category filter defaults to "All mail" today, which can pull in archived mail unexpectedly and inflate counts — default changes to Inbox-only | Planned |
+| Label operations respect filters | The Label feature has the same filter-ignoring issue as Delete — same fix applied | Planned |
+| Login gate | No authentication currently exists on any action endpoint — adds a single shared-password login screen protecting the whole app | Planned |
+
+### Restore-from-Trash
+
+An app-scoped operation log (not "restore everything in Gmail Trash") — every delete, archive, mark-as-read, or label action taken through the app is logged and individually reversible with one click, with a 30-day retention window on the log itself. Permanent feature, always visible, not a dev-only tool.
+
+### UI/UX redesign
+
+A full visual refresh — warm, minimal design system, sidebar navigation (Delete / Mark as read / Archive / Routines / Restore), a filter drawer replacing the old inline filter row, and Label/Important actions available inline on every screen rather than gated to one tab. See **Wireframes** below.
+
+### Multi-account switcher
+
+Sign in to multiple Gmail accounts at once and switch between them without repeatedly signing out and back in. One account active at a time (not a merged multi-account view).
+
+### Routines
+
+Save a named preset — a list of senders, a relative age threshold, and one or more actions (delete / label / mark as read / archive) — and re-run it with one click instead of re-entering filters every time. Built for recurring cleanup (e.g. daily newsletters). Always shows a preview of what it'll affect before running, and every run is undoable via Restore-from-Trash.
+
+### Per-email preview
+
+Expand any sender to see the individual matched emails (not just one sample subject line), exclude specific messages before acting, view a full email inline, or copy its subject — without leaving the app.
+
+### Wireframes
+
+Static, standalone reference mockups for every screen in the redesign live in [`wireframes/`](wireframes/) (copy that folder into this repo root if you don't see it):
+
+- [`delete.html`](wireframes/delete.html) — primary view, inline Label/Important, per-message preview
+- [`mark-as-read.html`](wireframes/mark-as-read.html)
+- [`archive.html`](wireframes/archive.html)
+- [`restore.html`](wireframes/restore.html)
+- [`login.html`](wireframes/login.html)
+- [`routines-list.html`](wireframes/routines-list.html)
+- [`routines-create.html`](wireframes/routines-create.html)
+- [`routines-confirm.html`](wireframes/routines-confirm.html)
+- [`account-switcher.html`](wireframes/account-switcher.html)
+- [`filter-drawer.html`](wireframes/filter-drawer.html)
+
+Open any of these directly in a browser — they're self-contained (shared `design-system.css`, Google Fonts, Tabler icons via CDN) and don't depend on the running app.
 
 ## Prerequisites
 
@@ -403,6 +455,12 @@ PRs welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) first.
 - Improve the UI
 - Add new functionality
 
+
+## 🙏 Credit
+
+This project is a fork of **[Gururagavendra/gmail-cleaner](https://github.com/Gururagavendra/gmail-cleaner)**, created and maintained by **[Gururagavendra](https://github.com/Gururagavendra)**. The OAuth flow, Gmail API integration, scanning and categorization engine, and the original UI are their work — none of what's described in this README's roadmap would exist without that foundation. This fork adds bug fixes and new features on top of it (see [This Fork's Roadmap](#️-this-forks-roadmap) above).
+
+If you're looking for the original, actively-maintained project rather than this personal fork, go to **[github.com/Gururagavendra/gmail-cleaner](https://github.com/Gururagavendra/gmail-cleaner)** — and if any of this fork's fixes end up generally useful, the intent is to contribute them back upstream via PR.
 
 <p align="center">
   Made to help you escape email hell | have a nice day
