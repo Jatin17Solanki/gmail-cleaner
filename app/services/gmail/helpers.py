@@ -102,14 +102,15 @@ def build_gmail_query(filters: Optional[Union[dict, Any]] = None) -> str:
             - sender: 'email@domain.com' or 'domain.com' to filter by sender
 
     Returns:
-        Gmail query string, empty string if no filters
+        Gmail query string. Scoped to `label:INBOX` when no explicit category
+        is given (#104) — without it, "no filters" silently meant "all mail",
+        inflating counts with archived mail and risking deletion of mail the
+        user deliberately archived.
     """
-    if not filters:
-        return ""
-
     # Handle both dict and Pydantic model
     if hasattr(filters, "model_dump"):
         filters = filters.model_dump(exclude_none=True)
+    filters = filters or {}
 
     query_parts = []
 
@@ -130,6 +131,8 @@ def build_gmail_query(filters: Optional[Union[dict, Any]] = None) -> str:
 
     if category := filters.get("category", ""):
         query_parts.append(f"category:{category}")
+    else:
+        query_parts.append("label:INBOX")
 
     if sender := filters.get("sender", ""):
         query_parts.append(f"from:{sender}")

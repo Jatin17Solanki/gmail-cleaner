@@ -8,6 +8,7 @@ import logging
 from functools import partial
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
+from app.core import state
 from app.models import (
     ScanRequest,
     MarkReadRequest,
@@ -118,7 +119,7 @@ async def api_delete_emails(request: DeleteEmailsRequest):
             detail="Sender email is required",
         )
     try:
-        return delete_emails_by_sender(request.sender)
+        return delete_emails_by_sender(request.sender, state.delete_scan_filters)
     except Exception as e:
         logger.exception("Error deleting emails")
         raise HTTPException(
@@ -132,7 +133,9 @@ async def api_delete_emails_bulk(
     request: DeleteBulkRequest, background_tasks: BackgroundTasks
 ):
     """Delete emails from multiple senders (background task with progress)."""
-    background_tasks.add_task(delete_emails_bulk_background, request.senders)
+    background_tasks.add_task(
+        delete_emails_bulk_background, request.senders, state.delete_scan_filters
+    )
     return {"status": "started"}
 
 
@@ -196,7 +199,10 @@ async def api_apply_label(
             detail="At least one sender is required",
         )
     background_tasks.add_task(
-        apply_label_to_senders_background, request.label_id, request.senders
+        apply_label_to_senders_background,
+        request.label_id,
+        request.senders,
+        state.delete_scan_filters,
     )
     return {"status": "started"}
 
@@ -217,7 +223,10 @@ async def api_remove_label(
             detail="At least one sender is required",
         )
     background_tasks.add_task(
-        remove_label_from_senders_background, request.label_id, request.senders
+        remove_label_from_senders_background,
+        request.label_id,
+        request.senders,
+        state.delete_scan_filters,
     )
     return {"status": "started"}
 

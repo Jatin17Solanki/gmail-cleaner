@@ -79,10 +79,10 @@ Lets make this tool a better one by improving as much as possible, All features 
 
 | Item | Description | Status |
 |---|---|---|
-| Delete respects active filters | Deleting emails from a sender currently ignores the date/category filters used to find them — fixed to route through the existing query builder instead of a bare sender query | Planned |
-| Inbox-scoped by default | Category filter defaults to "All mail" today, which can pull in archived mail unexpectedly and inflate counts — default changes to Inbox-only | Planned |
-| Label operations respect filters | The Label feature has the same filter-ignoring issue as Delete — same fix applied | Planned |
-| Login gate | No authentication currently exists on any action endpoint — adds a single shared-password login screen protecting the whole app | Planned |
+| Delete respects active filters | Deleting emails from a sender currently ignores the date/category filters used to find them — fixed to route through the existing query builder instead of a bare sender query | Done |
+| Inbox-scoped by default | Category filter defaults to "All mail" today, which can pull in archived mail unexpectedly and inflate counts — default changes to Inbox-only | Done |
+| Label operations respect filters | The Label feature has the same filter-ignoring issue as Delete — same fix applied | Done |
+| Login gate | No authentication currently exists on any action endpoint — adds a single shared-password login screen protecting the whole app | Done |
 
 ### Restore-from-Trash
 

@@ -12,6 +12,10 @@ token.json.backup
 # Credentials (sensitive - keep secret!)
 credentials.json
 
+# Docker-mounted data volume (tokens, routines, operation log, auth hash)
+data/
+auth.json
+
 # IDE
 .vscode/
 .idea/

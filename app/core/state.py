@@ -5,6 +5,7 @@ Shared state across the application.
 """
 
 import threading
+from typing import Optional
 
 
 class AppState:
@@ -40,6 +41,10 @@ class AppState:
             "done": False,
             "error": None,
         }
+        # Filters active in the most recent delete-scan (#107) — delete and
+        # label operations on the resulting senders reuse these so they only
+        # affect the subset of messages the user actually reviewed.
+        self.delete_scan_filters: Optional[dict] = None
 
         # Delete bulk operation state
         self.delete_bulk_status: dict = {
@@ -121,6 +126,7 @@ class AppState:
             "done": False,
             "error": None,
         }
+        self.delete_scan_filters = None
 
     def reset_mark_read(self):
         """Reset mark read state."""

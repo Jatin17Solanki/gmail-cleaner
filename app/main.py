@@ -14,7 +14,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.core import settings
-from app.api import status_router, actions_router
+from app.core.middleware import AuthGateMiddleware
+from app.core.security import ensure_password_hash_persisted
+from app.api import status_router, actions_router, auth_gate_router
 
 templates = Jinja2Templates(directory="templates")
 
@@ -117,6 +119,12 @@ async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown events."""
     # Startup
     print(f"{settings.app_name} v{settings.app_version} starting...")
+    ensure_password_hash_persisted()
+    if not settings.app_password:
+        print(
+            "WARNING: APP_PASSWORD is not set - the app is NOT protected by a "
+            "login gate. Set APP_PASSWORD to secure this instance."
+        )
     yield
     # Shutdown
     print("Shutting down...")
@@ -137,9 +145,13 @@ def create_app() -> FastAPI:
     # Mount static files
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
+    # Auth gate (Phase 1.3) - must wrap every route below
+    app.add_middleware(AuthGateMiddleware)
+
     # Include API routers
     app.include_router(status_router)
     app.include_router(actions_router)
+    app.include_router(auth_gate_router)
 
     # HTML routes
     @app.get("/", include_in_schema=False)
@@ -149,6 +161,15 @@ def create_app() -> FastAPI:
             request,
             "index.html",
             {"cache_bust": STARTUP_CACHE_BUST, "version": settings.app_version},
+        )
+
+    @app.get("/login", include_in_schema=False)
+    async def login_page(request: Request):
+        """Serve the login page (Phase 1.3)."""
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"cache_bust": STARTUP_CACHE_BUST},
         )
 
     return app

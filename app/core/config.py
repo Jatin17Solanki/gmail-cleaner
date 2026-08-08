@@ -33,6 +33,17 @@ class Settings(BaseSettings):
         description="Custom host for OAuth redirect (e.g., your domain or IP)",
     )
 
+    # App-level login gate (Phase 1.3, resolves #109/#108/#111)
+    app_password: str | None = Field(
+        default=None,
+        description=(
+            "Shared password gating the entire app (env: APP_PASSWORD). "
+            "If unset, the login gate is disabled. Resetting the password "
+            "means changing this env var and restarting the container — "
+            "there is no self-service reset flow."
+        ),
+    )
+
     @field_validator("web_auth", mode="before")
     @classmethod
     def validate_web_auth(cls, v) -> bool:

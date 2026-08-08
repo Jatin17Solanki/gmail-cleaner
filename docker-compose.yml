@@ -8,8 +8,8 @@ services:
     # build: .
 
     ports:
-      - "8766:8766"  # Web UI
-      - "8767:8767"  # OAuth callback
+      - "127.0.0.1:8766:8766"  # Web UI (bound to localhost only - #111)
+      - "127.0.0.1:8767:8767"  # OAuth callback (bound to localhost only - #111)
     volumes:
       - type: bind
         source: ./credentials.json
@@ -27,6 +27,11 @@ services:
           create_host_path: true
     environment:
       - WEB_AUTH=true
+
+      # REQUIRED to protect this instance: set a strong shared password
+      # gating the whole app (login page, all action endpoints). Without
+      # this, the app runs with no login gate at all.
+      # - APP_PASSWORD=changeme
 
       # Uncomment and set OAUTH_HOST if accessing via custom domain or server IP
       # - OAUTH_HOST=gmail.example.com

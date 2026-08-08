@@ -17,19 +17,19 @@ class TestBuildGmailQuery:
     """Tests for build_gmail_query function."""
 
     def test_empty_filters(self):
-        """Empty filters should return empty string."""
-        assert build_gmail_query(None) == ""
-        assert build_gmail_query({}) == ""
+        """No filters should default to Inbox-only (#104), not 'all mail'."""
+        assert build_gmail_query(None) == "label:INBOX"
+        assert build_gmail_query({}) == "label:INBOX"
 
     def test_older_than_filter(self):
-        """older_than filter should generate correct query."""
+        """older_than filter should generate correct query, still Inbox-scoped by default."""
         filters = {"older_than": "30d"}
-        assert build_gmail_query(filters) == "older_than:30d"
+        assert build_gmail_query(filters) == "older_than:30d label:INBOX"
 
     def test_larger_than_filter(self):
-        """larger_than filter should generate correct query."""
+        """larger_than filter should generate correct query, still Inbox-scoped by default."""
         filters = {"larger_than": "5M"}
-        assert build_gmail_query(filters) == "larger:5M"
+        assert build_gmail_query(filters) == "larger:5M label:INBOX"
 
     def test_category_filter(self):
         """category filter should generate correct query."""
@@ -52,14 +52,19 @@ class TestBuildGmailQuery:
         assert "category:social" in query
 
     def test_empty_string_values_ignored(self):
-        """Empty string values should be ignored."""
+        """Empty string values should be ignored; blank category still defaults to Inbox."""
         filters = {"older_than": "", "larger_than": "5M", "category": ""}
-        assert build_gmail_query(filters) == "larger:5M"
+        assert build_gmail_query(filters) == "larger:5M label:INBOX"
 
     def test_none_values_ignored(self):
-        """None values should be ignored."""
+        """None values should be ignored; missing category still defaults to Inbox."""
         filters = {"older_than": None, "larger_than": "10M", "category": None}
-        assert build_gmail_query(filters) == "larger:10M"
+        assert build_gmail_query(filters) == "larger:10M label:INBOX"
+
+    def test_explicit_category_does_not_add_inbox_scope(self):
+        """An explicitly chosen category should not also force label:INBOX."""
+        filters = {"category": "promotions"}
+        assert build_gmail_query(filters) == "category:promotions"
 
 
 class TestGetUnsubscribeFromHeaders:

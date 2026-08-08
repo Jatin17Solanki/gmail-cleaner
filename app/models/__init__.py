@@ -1,6 +1,7 @@
 """Models module exports."""
 
 from .schemas import (
+    LoginRequest,
     ScanRequest,
     MarkReadRequest,
     DeleteScanRequest,
