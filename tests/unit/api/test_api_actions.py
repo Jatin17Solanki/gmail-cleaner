@@ -61,11 +61,26 @@ class TestAuthEndpoints:
     def test_sign_in(self, mock_get_service, client):
         """POST /api/sign-in should trigger sign-in flow."""
         # Mock to prevent actual OAuth flow and browser opening
-        mock_get_service.return_value = (None, "Not authenticated")
+        mock_get_service.return_value = (
+            None,
+            "Sign-in started. Please complete authorization in your browser.",
+        )
         response = client.post("/api/sign-in")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "signing_in"
+
+    @patch("app.api.actions.get_gmail_service")
+    def test_sign_in_surfaces_genuine_errors(self, mock_get_service, client):
+        """POST /api/sign-in should surface a real failure (not silently
+        report "signing_in" for it) - this was the actual bug behind sign-in
+        appearing to do nothing on retry after a stuck previous attempt."""
+        mock_get_service.return_value = (None, "credentials.json not found!")
+        response = client.post("/api/sign-in")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "error"
+        assert data["error"] == "credentials.json not found!"
 
     @patch("app.api.actions.sign_out")
     def test_sign_out(self, mock_sign_out, client):
@@ -163,9 +178,7 @@ class TestDeleteEmailsEndpoint:
         mock_delete.assert_called_once_with("newsletter@example.com", None)
 
     @patch("app.api.actions.delete_emails_by_sender")
-    def test_delete_emails_by_sender_reuses_scan_filters(
-        self, mock_delete, client
-    ):
+    def test_delete_emails_by_sender_reuses_scan_filters(self, mock_delete, client):
         """Delete should reuse the filters active in the most recent delete-scan (#107)."""
         from app.core import state
 

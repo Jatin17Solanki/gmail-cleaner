@@ -56,10 +56,34 @@ async def api_scan(request: ScanRequest, background_tasks: BackgroundTasks):
 
 
 @router.post("/sign-in")
-async def api_sign_in(background_tasks: BackgroundTasks):
-    """Trigger OAuth sign-in flow."""
-    background_tasks.add_task(get_gmail_service)
-    return {"status": "signing_in"}
+async def api_sign_in():
+    """Trigger OAuth sign-in flow.
+
+    Calls get_gmail_service() inline (not as a background task) so a
+    genuine failure - e.g. a previous sign-in attempt still pending - can
+    be surfaced to the caller immediately. The previous background-task
+    version always returned {"status": "signing_in"} regardless of what
+    actually happened server-side, silently swallowing that error. The
+    OAuth browser flow itself still runs in get_gmail_service()'s own
+    background thread and does not block this request.
+    """
+    try:
+        _service, error = get_gmail_service()
+    except Exception as e:
+        logger.exception("Error starting sign-in")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start sign-in",
+        ) from e
+
+    if error:
+        # "Sign-in started..." isn't a failure - the OAuth flow is now
+        # running in the background and the frontend should poll for it.
+        if error.startswith("Sign-in started"):
+            return {"status": "signing_in"}
+        return {"status": "error", "error": error}
+
+    return {"status": "signed_in"}
 
 
 @router.post("/sign-out")

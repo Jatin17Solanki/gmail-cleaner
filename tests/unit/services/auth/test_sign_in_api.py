@@ -46,16 +46,34 @@ class TestSignInAPIEndpoint:
 
     @patch("app.api.actions.get_gmail_service")
     def test_sign_in_when_already_in_progress(self, mock_get_service, client):
-        """POST /api/sign-in when auth already in progress should return immediately."""
+        """POST /api/sign-in when auth already in progress should surface that
+        as an error rather than silently reporting "signing_in" (previously
+        this was discarded entirely since get_gmail_service ran as a
+        fire-and-forget background task)."""
         mock_get_service.return_value = (
             None,
-            "Sign-in already in progress. Please complete the authorization in your browser.",
+            "A previous sign-in attempt is still pending. If you closed that "
+            "browser tab, it will clear automatically within 90 seconds - "
+            "then try again.",
         )
 
         response = client.post("/api/sign-in")
 
         assert response.status_code == 200
-        assert response.json()["status"] == "signing_in"
+        data = response.json()
+        assert data["status"] == "error"
+        assert "still pending" in data["error"]
+
+    @patch("app.api.actions.get_gmail_service")
+    def test_sign_in_when_already_authenticated(self, mock_get_service, client):
+        """POST /api/sign-in when a valid cached token already exists should
+        report success immediately, without any polling needed."""
+        mock_get_service.return_value = (Mock(), None)
+
+        response = client.post("/api/sign-in")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "signed_in"
 
 
 class TestSignOutAPIEndpoint:

@@ -43,6 +43,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per sender - both could look inconsistent with each other or with a
   sender's true total. Added explanatory notes in the UI rather than
   changing the underlying scan behavior, which needs further investigation
+- Sign-in could get permanently stuck if the OAuth consent tab was closed
+  before finishing. The default (no custom port mapping) flow used
+  google-auth-oauthlib's `Flow.run_local_server()`, which has no timeout at
+  all; the custom-port flow had its own manually-managed callback server
+  with a 300s timeout, longer than the frontend's 120s polling budget. Both
+  paths are now unified onto the same manually-managed, 90-second-timeout
+  callback server, and `/api/sign-in` surfaces a genuine failure (e.g. "a
+  previous sign-in attempt is still pending") instead of always reporting
+  `{"status": "signing_in"}` regardless of what actually happened
+
+### Known issue (documented, not fixed in this round)
+- Scanning with a large limit (e.g. 5000) can return different results on
+  repeated runs with identical filters. Root cause: Gmail API quota
+  exhaustion - `messages.get()` costs 20 quota units and a 5000-email scan
+  can issue up to 100,000 units of calls against a 6,000/minute/user limit,
+  with no retry/backoff anywhere in the codebase, so which specific
+  requests get rate-limited (and silently dropped from the count) varies
+  run to run. Fixing this properly means building the quota-awareness
+  system already specified in the PRD (Section 7): a rolling 60s usage
+  counter, proactive blocking before exceeding the limit, and reactive
+  429 backoff. Deferred as its own piece of work rather than folded into
+  this phase
 
 ## [1.0.0] - 2024-11-29
 
