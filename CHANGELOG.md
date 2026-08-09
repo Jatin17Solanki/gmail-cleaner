@@ -24,6 +24,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Closure variable binding in batch callback functions
 - Test coverage improvements with proper mock assertions
 - Boolean positional argument pattern in `mark_important_background`
+- Delete and label operations ignored the date/category filters used to find
+  a sender, deleting/labeling more than the filtered subset shown (#107)
+- Scans defaulted to "all mail" instead of Inbox when no category filter was
+  set, inflating counts with archived mail (#104)
+- No authentication existed on any action endpoint or the UI itself; added a
+  shared-password login gate (#109, #108) and bound Docker ports to
+  `127.0.0.1` instead of all interfaces (#111)
+- Signing out left the "Sign in" button permanently stuck showing
+  "Signing in..." and disabled, because a *successful* sign-in never reset
+  the button state set by the previous click - only certain failure paths did
+- The custom date-range picker (Litepicker, loaded from a CDN) failed
+  silently with no calendar widget and no error if that script didn't load;
+  added a plain-date-input fallback and error handling around initialization
+- The Unsubscribe scan's sender counts/date-ranges only reflect emails with
+  a detected unsubscribe link (not a sender's total mail), and the Delete
+  scan samples the most recent N emails across the whole mailbox rather than
+  per sender - both could look inconsistent with each other or with a
+  sender's true total. Added explanatory notes in the UI rather than
+  changing the underlying scan behavior, which needs further investigation
 
 ## [1.0.0] - 2024-11-29
 

@@ -80,3 +80,20 @@ def mock_gmail_auth(monkeypatch):
         return original_exists(path)
 
     monkeypatch.setattr("os.path.exists", mock_exists)
+
+
+@pytest.fixture(autouse=True)
+def isolate_app_password(monkeypatch):
+    """Neutralize APP_PASSWORD for every test, regardless of the developer's
+    local .env.
+
+    `settings` is a singleton built once at import time, so `monkeypatch.
+    setenv` alone can't affect it - a developer's local .env (e.g. one set
+    up to test the login gate manually) would otherwise silently enable the
+    auth gate for the whole suite and break every unauthenticated-request
+    test. Tests that specifically exercise the gate set this back to a
+    value themselves within the test body.
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "app_password", None)

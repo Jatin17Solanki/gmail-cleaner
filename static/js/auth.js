@@ -35,6 +35,11 @@ GmailCleaner.Auth = {
         } else {
             userSection.innerHTML = '';
             GmailCleaner.Filters.showBar(false);
+            // Reset the sign-in button before showing the login view - it may
+            // still be stuck disabled/"Signing in..." from a previous sign-in
+            // click, since a *successful* sign-in never resets it (it just
+            // hides behind the logged-in view instead).
+            this.resetSignInButton();
             GmailCleaner.UI.showView('login');
         }
     },
