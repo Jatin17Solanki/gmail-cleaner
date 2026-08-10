@@ -53,6 +53,11 @@ GmailCleaner.UI = {
         if (viewName === 'markread') {
             GmailCleaner.MarkRead.refreshUnreadCount();
         }
+
+        // Refresh the restorable-actions list when switching to Restore view
+        if (viewName === 'restore') {
+            GmailCleaner.Restore.loadEntries();
+        }
     },
 
     escapeHtml(text) {

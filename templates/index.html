@@ -70,6 +70,12 @@
                         </svg>
                         <span>Mark as Read</span>
                     </a>
+                    <a href="#" class="nav-item" data-view="restore">
+                        <svg viewBox="0 0 24 24" width="20" height="20">
+                            <path fill="currentColor" d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 7 7 6.93 6.93 0 0 1-4.94-2.06l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"/>
+                        </svg>
+                        <span>Restore</span>
+                    </a>
                 </nav>
 
                 <div class="sidebar-footer">
@@ -338,6 +344,27 @@
                     </div>
                 </div>
 
+                <!-- Restore View -->
+                <div class="view hidden" id="restoreView">
+                    <div class="content-header">
+                        <h1>Restore</h1>
+                        <p>Undo a batch delete, archive, mark-as-read, or label action.</p>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header card-header-flex">
+                            <h3>Recent actions</h3>
+                            <span class="restore-note">Showing actions from the last 30 days.</span>
+                        </div>
+                        <div class="card-body">
+                            <div id="restoreEmpty" class="hidden">
+                                <p>No restorable actions in the last 30 days.</p>
+                            </div>
+                            <ul id="restoreList" class="restore-list"></ul>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Delete Emails View -->
                 <div class="view hidden" id="deleteView">
                     <div class="content-header">
@@ -480,6 +507,7 @@
     <script src="/static/js/markread.js?v={{ cache_bust }}"></script>
     <script src="/static/js/delete.js?v={{ cache_bust }}"></script>
     <script src="/static/js/labels.js?v={{ cache_bust }}"></script>
+    <script src="/static/js/restore.js?v={{ cache_bust }}"></script>
     <!-- Litepicker Date Range Picker Library -->
     <script src="https://cdn.jsdelivr.net/npm/litepicker@latest/dist/litepicker.js"></script>
 </body>

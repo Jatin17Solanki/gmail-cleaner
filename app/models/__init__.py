@@ -20,4 +20,6 @@ from .schemas import (
     UnreadCountResponse,
     UnsubscribeResponse,
     DeleteResponse,
+    OperationLogEntry,
+    RestoreResponse,
 )

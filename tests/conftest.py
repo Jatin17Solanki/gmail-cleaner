@@ -83,6 +83,20 @@ def mock_gmail_auth(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_operation_log(monkeypatch, tmp_path):
+    """Repoint the operation log's file path to a tmp dir for every test.
+
+    `operation_log` derives its file path from `settings.token_file`'s
+    directory (same pattern as `security.py`'s `auth.json`) - without this,
+    tests would read/write whatever `token.json`'s directory resolves to on
+    the developer's machine.
+    """
+    from app.services import operation_log
+
+    monkeypatch.setattr(operation_log.settings, "token_file", str(tmp_path / "token.json"))
+
+
+@pytest.fixture(autouse=True)
 def isolate_app_password(monkeypatch):
     """Neutralize APP_PASSWORD for every test, regardless of the developer's
     local .env.

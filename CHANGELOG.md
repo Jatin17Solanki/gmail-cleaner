@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CodeRabbit AI code review integration with `.coderabbit.yaml` configuration
 - Pre-commit hooks for code quality checks (ruff, bandit, trailing whitespace, etc.)
 - Comprehensive type annotations throughout the codebase
+- Restore-from-Trash: a permanent "Restore" sidebar tab backed by a local,
+  app-scoped operation log (`./data/operations.json`), not a "restore
+  everything in Gmail Trash" approach. Every successful delete, archive,
+  mark-as-read, or label add/remove now writes a log entry recording exactly
+  which messages it modified and how; restoring an entry reverses that exact
+  change (e.g. delete → untrash, archive → re-add INBOX, mark-as-read →
+  re-add UNREAD, label added → label removed) via one generic mechanism
+  rather than per-action-type logic. Entries older than 30 days are pruned
+  automatically, with a note on the Restore screen reflecting that window.
+  Mark-important is not covered (not listed among Phase 2's target actions
+  in the PRD), and the Restore screen uses the app's existing CSS rather
+  than the wireframes' `design-system.css`, since adopting that system
+  app-wide is Phase 3's job
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

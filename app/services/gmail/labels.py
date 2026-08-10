@@ -7,6 +7,7 @@ Functions for managing Gmail labels.
 from typing import Optional
 
 from app.core import state
+from app.services import operation_log
 from app.services.auth import get_gmail_service
 from app.services.gmail.helpers import build_gmail_query
 
@@ -182,6 +183,16 @@ def _apply_label_operation_background(
             state.label_operation_status["done"] = True
             state.label_operation_status["error"] = f"Failed to fetch label: {str(e)}"
             return
+    else:
+        # Not required for the query, but fetched best-effort so the
+        # operation log can show a readable name instead of a bare ID.
+        try:
+            label_info = (
+                service.users().labels().get(userId="me", id=label_id).execute()
+            )
+            label_name = label_info.get("name", "")
+        except Exception:
+            label_name = None
 
     for i, sender in enumerate(senders):
         state.label_operation_status["current_sender"] = i + 1
@@ -239,6 +250,7 @@ def _apply_label_operation_background(
 
     batch_size = 1000
     affected = 0
+    affected_ids: list[str] = []
 
     # Build batch modify body
     if add_label:
@@ -252,6 +264,7 @@ def _apply_label_operation_background(
             body = {**body_template, "ids": batch}
             service.users().messages().batchModify(userId="me", body=body).execute()
             affected += len(batch)
+            affected_ids.extend(batch)
             state.label_operation_status["affected_count"] = affected
             state.label_operation_status["progress"] = 40 + int(
                 (affected / total_emails) * 60
@@ -261,6 +274,15 @@ def _apply_label_operation_background(
             )
     except Exception as e:
         errors.append(f"Batch operation error: {str(e)}")
+
+    if affected_ids:
+        operation_log.append_entry(
+            action_type="label_add" if add_label else "label_remove",
+            message_ids=affected_ids,
+            added_labels=[label_id] if add_label else [],
+            removed_labels=[] if add_label else [label_id],
+            summary={"senders": senders, "label_name": label_name},
+        )
 
     # Done
     state.label_operation_status["progress"] = 100

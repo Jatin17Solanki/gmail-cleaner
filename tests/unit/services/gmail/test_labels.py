@@ -8,6 +8,7 @@ f-string, ignoring whatever filters were active in the scan.
 
 from unittest.mock import MagicMock, patch
 
+from app.services import operation_log
 from app.services.gmail.labels import (
     apply_label_to_senders_background,
     remove_label_from_senders_background,
@@ -82,3 +83,52 @@ class TestRemoveLabelQueryScoping:
         assert "from:a@example.com" in query
         assert "label:Newsletters" in query
         assert "label:INBOX" in query
+
+
+class TestLabelOperationsWriteOperationLog:
+    """Phase 2: a successful label add/remove should be restorable."""
+
+    @patch("app.services.gmail.labels.get_gmail_service")
+    def test_apply_label_logs_entry(self, mock_get_service):
+        service = _mock_service(
+            {"messages": [{"id": "m1"}, {"id": "m2"}]}, label_name="Newsletters"
+        )
+        mock_get_service.return_value = (service, None)
+
+        apply_label_to_senders_background("Label_1", ["a@example.com"])
+
+        entries = operation_log.list_entries()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["action_type"] == "label_add"
+        assert set(entry["message_ids"]) == {"m1", "m2"}
+        assert entry["added_labels"] == ["Label_1"]
+        assert entry["removed_labels"] == []
+        assert entry["summary"]["senders"] == ["a@example.com"]
+        assert entry["summary"]["label_name"] == "Newsletters"
+
+    @patch("app.services.gmail.labels.get_gmail_service")
+    def test_remove_label_logs_entry(self, mock_get_service):
+        service = _mock_service(
+            {"messages": [{"id": "m1"}]}, label_name="Newsletters"
+        )
+        mock_get_service.return_value = (service, None)
+
+        remove_label_from_senders_background("Label_1", ["a@example.com"])
+
+        entries = operation_log.list_entries()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["action_type"] == "label_remove"
+        assert entry["message_ids"] == ["m1"]
+        assert entry["added_labels"] == []
+        assert entry["removed_labels"] == ["Label_1"]
+
+    @patch("app.services.gmail.labels.get_gmail_service")
+    def test_no_matching_messages_does_not_log(self, mock_get_service):
+        service = _mock_service({"messages": []})
+        mock_get_service.return_value = (service, None)
+
+        apply_label_to_senders_background("Label_1", ["a@example.com"])
+
+        assert operation_log.list_entries() == []

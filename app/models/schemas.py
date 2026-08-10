@@ -243,3 +243,23 @@ class DeleteResponse(BaseModel):
     success: bool
     deleted: int = 0
     message: Optional[str] = None
+
+
+class OperationLogEntry(BaseModel):
+    """A restorable entry from the operation log (Phase 2)."""
+
+    id: str
+    action_type: str
+    timestamp: str
+    source: str
+    message_count: int
+    senders: list[str] = []
+    label_name: Optional[str] = None
+
+
+class RestoreResponse(BaseModel):
+    """Restore action response."""
+
+    success: bool
+    restored: int = 0
+    message: Optional[str] = None
