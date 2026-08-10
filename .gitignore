@@ -12,6 +12,10 @@ token.json.backup
 # Credentials (sensitive - keep secret!)
 credentials.json
 
+# Docker-mounted data volume (tokens, routines, operation log, auth hash)
+data/
+auth.json
+
 # IDE
 .vscode/
 .idea/
@@ -25,6 +29,10 @@ IMPROVEMENTS.md
 
 # Fork planning spec (needed on disk for Claude Code, not for public history)
 PRD.md
+
+# Session continuity log for AI coding assistants (local state, not public
+# history — see CLAUDE.md for why this stays out of git)
+PROGRESS.md
 
 # Test/Coverage artifacts
 .coverage

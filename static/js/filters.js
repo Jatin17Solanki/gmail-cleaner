@@ -25,7 +25,16 @@ GmailCleaner.Filters = {
 
     setupDateRangePicker() {
         const dateRangeInput = document.getElementById('dateRangePicker');
-        if (!dateRangeInput || !window.Litepicker) return;
+        if (!dateRangeInput) return;
+
+        // Litepicker loads from a CDN with no fallback of its own - if that
+        // script failed to load (network issue, blocked domain, etc.),
+        // window.Litepicker won't exist. Fall back to plain date inputs
+        // instead of silently leaving the user with a dead text field.
+        if (!window.Litepicker) {
+            this.showDateRangeFallback();
+            return;
+        }
 
         try {
             // Calculate default dates: today and 7 days ago
@@ -71,9 +80,22 @@ GmailCleaner.Filters = {
                     e.preventDefault();
                 }
             });
+
+            this.hideDateRangeFallback();
         } catch (error) {
             console.error('Error initializing Litepicker:', error);
+            this.showDateRangeFallback();
         }
+    },
+
+    showDateRangeFallback() {
+        document.getElementById('dateRangePicker')?.classList.add('hidden');
+        document.getElementById('dateRangeFallback')?.classList.remove('hidden');
+    },
+
+    hideDateRangeFallback() {
+        document.getElementById('dateRangePicker')?.classList.remove('hidden');
+        document.getElementById('dateRangeFallback')?.classList.add('hidden');
     },
 
     handleOlderThanChange(event) {
@@ -103,27 +125,41 @@ GmailCleaner.Filters = {
 
         // If custom date range is selected, use after/before date format
         if (olderThanValue === 'custom') {
-            const dateRangeInput = document.getElementById('dateRangePicker');
-            if (dateRangeInput && dateRangeInput.value) {
-                // Parse the date range from the input (format: YYYY-MM-DD - YYYY-MM-DD)
-                const dateRangeText = dateRangeInput.value;
-                const dates = dateRangeText.split(' - ');
+            if (this.litepicker) {
+                const dateRangeInput = document.getElementById('dateRangePicker');
+                if (dateRangeInput && dateRangeInput.value) {
+                    // Parse the date range from the input (format: YYYY-MM-DD - YYYY-MM-DD)
+                    const dateRangeText = dateRangeInput.value;
+                    const dates = dateRangeText.split(' - ');
 
-                if (dates.length === 2) {
-                    const startDateStr = dates[0].trim();
-                    const endDateStr = dates[1].trim();
+                    if (dates.length === 2) {
+                        const startDateStr = dates[0].trim();
+                        const endDateStr = dates[1].trim();
 
-                    // Validate date formats
-                    if (/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) && /^\d{4}-\d{2}-\d{2}$/.test(endDateStr)) {
-                        // Convert YYYY-MM-DD to YYYY/MM/DD format for Gmail API
-                        afterDate = startDateStr.replace(/-/g, '/');
-                        // Add 1 day to end date for exclusive upper bound (before date)
-                        const endDate = new Date(endDateStr + 'T00:00:00');
-                        endDate.setDate(endDate.getDate() + 1);
-                        beforeDate = endDate.toISOString().split('T')[0].replace(/-/g, '/');
+                        // Validate date formats
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) && /^\d{4}-\d{2}-\d{2}$/.test(endDateStr)) {
+                            // Convert YYYY-MM-DD to YYYY/MM/DD format for Gmail API
+                            afterDate = startDateStr.replace(/-/g, '/');
+                            // Add 1 day to end date for exclusive upper bound (before date)
+                            const endDate = new Date(endDateStr + 'T00:00:00');
+                            endDate.setDate(endDate.getDate() + 1);
+                            beforeDate = endDate.toISOString().split('T')[0].replace(/-/g, '/');
 
-                        console.log('Date range filter:', { startDateStr, endDateStr, afterDate, beforeDate });
+                            console.log('Date range filter:', { startDateStr, endDateStr, afterDate, beforeDate });
+                        }
                     }
+                }
+            } else {
+                // Litepicker didn't load - read the plain date-input fallback instead
+                const startStr = document.getElementById('dateRangeStart')?.value || '';
+                const endStr = document.getElementById('dateRangeEnd')?.value || '';
+
+                if (/^\d{4}-\d{2}-\d{2}$/.test(startStr) && /^\d{4}-\d{2}-\d{2}$/.test(endStr)) {
+                    afterDate = startStr.replace(/-/g, '/');
+                    // Add 1 day to end date for exclusive upper bound (before date)
+                    const endDate = new Date(endStr + 'T00:00:00');
+                    endDate.setDate(endDate.getDate() + 1);
+                    beforeDate = endDate.toISOString().split('T')[0].replace(/-/g, '/');
                 }
             }
         } else {
@@ -153,6 +189,8 @@ GmailCleaner.Filters = {
         const sender = document.getElementById('filterSender');
         const label = document.getElementById('filterLabel');
         const dateRangeGroup = document.getElementById('dateRangeGroup');
+        const dateRangeStart = document.getElementById('dateRangeStart');
+        const dateRangeEnd = document.getElementById('dateRangeEnd');
 
         if (olderThan) olderThan.value = '';
         if (largerThan) largerThan.value = '';
@@ -164,6 +202,10 @@ GmailCleaner.Filters = {
         if (this.litepicker) {
             this.litepicker.setDateRange(null, null);
         }
+
+        // Clear the plain-date-input fallback too, in case Litepicker never loaded
+        if (dateRangeStart) dateRangeStart.value = '';
+        if (dateRangeEnd) dateRangeEnd.value = '';
 
         // Hide date range group
         if (dateRangeGroup) {

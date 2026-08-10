@@ -61,11 +61,26 @@ class TestAuthEndpoints:
     def test_sign_in(self, mock_get_service, client):
         """POST /api/sign-in should trigger sign-in flow."""
         # Mock to prevent actual OAuth flow and browser opening
-        mock_get_service.return_value = (None, "Not authenticated")
+        mock_get_service.return_value = (
+            None,
+            "Sign-in started. Please complete authorization in your browser.",
+        )
         response = client.post("/api/sign-in")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "signing_in"
+
+    @patch("app.api.actions.get_gmail_service")
+    def test_sign_in_surfaces_genuine_errors(self, mock_get_service, client):
+        """POST /api/sign-in should surface a real failure (not silently
+        report "signing_in" for it) - this was the actual bug behind sign-in
+        appearing to do nothing on retry after a stuck previous attempt."""
+        mock_get_service.return_value = (None, "credentials.json not found!")
+        response = client.post("/api/sign-in")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "error"
+        assert data["error"] == "credentials.json not found!"
 
     @patch("app.api.actions.sign_out")
     def test_sign_out(self, mock_sign_out, client):
@@ -154,13 +169,30 @@ class TestDeleteEmailsEndpoint:
 
     @patch("app.api.actions.delete_emails_by_sender")
     def test_delete_emails_by_sender(self, mock_delete, client):
-        """POST /api/delete-emails should delete by sender."""
+        """POST /api/delete-emails should delete by sender with no active scan filters."""
         mock_delete.return_value = {"success": True, "deleted": 10}
         response = client.post(
             "/api/delete-emails", json={"sender": "newsletter@example.com"}
         )
         assert response.status_code == 200
-        mock_delete.assert_called_once_with("newsletter@example.com")
+        mock_delete.assert_called_once_with("newsletter@example.com", None)
+
+    @patch("app.api.actions.delete_emails_by_sender")
+    def test_delete_emails_by_sender_reuses_scan_filters(self, mock_delete, client):
+        """Delete should reuse the filters active in the most recent delete-scan (#107)."""
+        from app.core import state
+
+        mock_delete.return_value = {"success": True, "deleted": 10}
+        state.delete_scan_filters = {"older_than": "30d", "category": "promotions"}
+
+        response = client.post(
+            "/api/delete-emails", json={"sender": "newsletter@example.com"}
+        )
+        assert response.status_code == 200
+        mock_delete.assert_called_once_with(
+            "newsletter@example.com",
+            {"older_than": "30d", "category": "promotions"},
+        )
 
 
 class TestDeleteBulkEndpoint:
@@ -173,7 +205,7 @@ class TestDeleteBulkEndpoint:
         response = client.post("/api/delete-emails-bulk", json={"senders": senders})
         assert response.status_code == 200
         assert response.json() == {"status": "started"}
-        mock_delete.assert_called_once_with(senders)
+        mock_delete.assert_called_once_with(senders, None)
 
     def test_delete_bulk_large_senders_list(self, client):
         """POST /api/delete-emails-bulk with many senders should succeed (no limit)."""
@@ -188,7 +220,7 @@ class TestDeleteBulkEndpoint:
         response = client.post("/api/delete-emails-bulk", json={"senders": []})
         assert response.status_code == 200
         assert response.json() == {"status": "started"}
-        mock_delete.assert_called_once_with([])
+        mock_delete.assert_called_once_with([], None)
 
 
 class TestRequestValidation:

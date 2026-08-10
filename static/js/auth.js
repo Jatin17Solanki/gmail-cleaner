@@ -35,6 +35,11 @@ GmailCleaner.Auth = {
         } else {
             userSection.innerHTML = '';
             GmailCleaner.Filters.showBar(false);
+            // Reset the sign-in button before showing the login view - it may
+            // still be stuck disabled/"Signing in..." from a previous sign-in
+            // click, since a *successful* sign-in never resets it (it just
+            // hides behind the logged-in view instead).
+            this.resetSignInButton();
             GmailCleaner.UI.showView('login');
         }
     },
@@ -58,6 +63,7 @@ GmailCleaner.Auth = {
             signInBtn.disabled = true;
             signInBtn.innerHTML = '<span>Signing in...</span>';
         }
+        this.setStatus('Starting sign-in...');
 
         try {
             const statusResp = await fetch('/api/web-auth-status');
@@ -88,14 +94,20 @@ GmailCleaner.Auth = {
             const signInResult = await signInResp.json();
 
             if (signInResult.error) {
+                // e.g. "a previous attempt is still pending, ~Ns remaining" -
+                // surfaced as a toast (not a blocking alert) since the user
+                // hasn't done anything wrong here, they just need to wait a
+                // moment and try again.
                 this.resetSignInButton();
-                alert('Sign-in error: ' + signInResult.error);
+                GmailCleaner.UI.showErrorToast(signInResult.error);
                 return;
             }
 
+            this.setStatus('A browser tab should have opened for Google sign-in. Complete it there - this page will update automatically.');
             this.pollStatus();
         } catch (error) {
-            alert('Error signing in: ' + error.message);
+            this.clearStatus();
+            GmailCleaner.UI.showErrorToast('Error signing in: ' + error.message);
             this.resetSignInButton();
         }
     },
@@ -109,12 +121,25 @@ GmailCleaner.Auth = {
             const status = await response.json();
 
             if (status.logged_in) {
+                this.clearStatus();
                 this.updateUI(status);
             } else if (attempts < maxAttempts) {
+                if (signInBtn) {
+                    // Count down to when polling gives up, not up from zero -
+                    // an increasing number here reads as "still stuck", not
+                    // "still waiting, N seconds left before we give up".
+                    const remaining = maxAttempts - attempts;
+                    signInBtn.innerHTML = `<span>Signing in... (${remaining}s)</span>`;
+                }
+                // After ~10s, give a more specific nudge in case the browser
+                // tab was missed (blocked pop-up, opened behind the window, etc).
+                if (attempts === 10) {
+                    this.setStatus("Still waiting - check for a Google sign-in tab that may have opened (it can be hidden behind this window, or blocked as a pop-up).");
+                }
                 setTimeout(() => this.pollStatus(attempts + 1), 1000);
             } else {
                 this.resetSignInButton();
-                alert('Sign-in timed out. Please try again.');
+                GmailCleaner.UI.showErrorToast('Sign-in timed out after 2 minutes. If you closed the browser tab, wait a moment and try again.');
             }
         } catch (error) {
             console.error('Error polling auth status:', error);
@@ -130,6 +155,23 @@ GmailCleaner.Auth = {
                 <path fill="currentColor" d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
             </svg>
             Sign in with Google`;
+        }
+        this.clearStatus();
+    },
+
+    setStatus(message) {
+        const statusEl = document.getElementById('signInStatus');
+        if (statusEl) {
+            statusEl.textContent = message;
+            statusEl.classList.remove('hidden');
+        }
+    },
+
+    clearStatus() {
+        const statusEl = document.getElementById('signInStatus');
+        if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.classList.add('hidden');
         }
     },
 

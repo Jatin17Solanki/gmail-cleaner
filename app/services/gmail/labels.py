@@ -4,8 +4,11 @@ Gmail Label Management Operations
 Functions for managing Gmail labels.
 """
 
+from typing import Optional
+
 from app.core import state
 from app.services.auth import get_gmail_service
+from app.services.gmail.helpers import build_gmail_query
 
 
 def get_labels() -> dict:
@@ -117,6 +120,7 @@ def _apply_label_operation_background(
     progress_message_template: str,
     success_message_template: str,
     error_message_template: str,
+    filters: Optional[dict] = None,
 ) -> None:
     """Common helper for applying or removing labels from senders (background task).
 
@@ -130,6 +134,9 @@ def _apply_label_operation_background(
         progress_message_template: Template for progress updates (use {count} and {total})
         success_message_template: Template for success message (use {count})
         error_message_template: Template for error message (use {count})
+        filters: Filters that were active in the scan that surfaced these
+            senders (see build_gmail_query) — keeps label operations scoped
+            to the filtered subset the user reviewed, same root issue as #107.
     """
     state.reset_label_operation()
 
@@ -182,11 +189,15 @@ def _apply_label_operation_background(
         state.label_operation_status["message"] = f"Finding emails from {sender}..."
 
         try:
-            # Build query: for remove, include label filter; for add, just sender
-            if add_label:
-                query = f"from:{sender}"
-            else:
-                query = f"from:{sender} label:{label_name}"
+            # Build query via build_gmail_query() so the operation stays scoped
+            # to the filters active in the scan that surfaced this sender.
+            # For remove, also constrain to messages that actually carry the
+            # label being removed.
+            query_filters = dict(filters or {})
+            query_filters["sender"] = sender
+            if not add_label:
+                query_filters["label"] = label_name
+            query = build_gmail_query(query_filters)
 
             results = (
                 service.users()
@@ -267,7 +278,9 @@ def _apply_label_operation_background(
         )
 
 
-def apply_label_to_senders_background(label_id: str, senders: list[str]) -> None:
+def apply_label_to_senders_background(
+    label_id: str, senders: list[str], filters: Optional[dict] = None
+) -> None:
     """Apply a label to all emails from specified senders (background task)."""
     _apply_label_operation_background(
         label_id=label_id,
@@ -279,10 +292,13 @@ def apply_label_to_senders_background(label_id: str, senders: list[str]) -> None
         progress_message_template="Labeled {count}/{total} emails...",
         success_message_template="Successfully labeled {count} emails",
         error_message_template="Labeled {count} emails with some errors",
+        filters=filters,
     )
 
 
-def remove_label_from_senders_background(label_id: str, senders: list[str]) -> None:
+def remove_label_from_senders_background(
+    label_id: str, senders: list[str], filters: Optional[dict] = None
+) -> None:
     """Remove a label from all emails from specified senders (background task)."""
     _apply_label_operation_background(
         label_id=label_id,
@@ -294,6 +310,7 @@ def remove_label_from_senders_background(label_id: str, senders: list[str]) -> N
         progress_message_template="Unlabeled {count}/{total} emails...",
         success_message_template="Successfully removed label from {count} emails",
         error_message_template="Unlabeled {count} emails with some errors",
+        filters=filters,
     )
 
 

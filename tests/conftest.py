@@ -38,6 +38,32 @@ def sample_email_headers_one_click():
 
 
 @pytest.fixture(autouse=True)
+def reset_app_state():
+    """Reset shared app state before/after each test.
+
+    `state` is a module-level singleton (app/core/state.py), so without this
+    a background task triggered by one test (e.g. a delete-scan storing
+    filters) can leak into an unrelated test run later in the same session.
+    """
+    from app.core import state as app_state
+
+    def _reset():
+        app_state.reset_scan()
+        app_state.reset_delete_scan()
+        app_state.reset_mark_read()
+        app_state.reset_delete_bulk()
+        app_state.reset_download()
+        app_state.reset_label_operation()
+        app_state.reset_archive()
+        app_state.reset_important()
+        app_state.current_user = {"email": None, "logged_in": False}
+
+    _reset()
+    yield
+    _reset()
+
+
+@pytest.fixture(autouse=True)
 def mock_gmail_auth(monkeypatch):
     """Automatically mock Gmail authentication to prevent browser opening during tests."""
     # Set environment variable to disable web auth mode (prevents browser opening)
@@ -54,3 +80,20 @@ def mock_gmail_auth(monkeypatch):
         return original_exists(path)
 
     monkeypatch.setattr("os.path.exists", mock_exists)
+
+
+@pytest.fixture(autouse=True)
+def isolate_app_password(monkeypatch):
+    """Neutralize APP_PASSWORD for every test, regardless of the developer's
+    local .env.
+
+    `settings` is a singleton built once at import time, so `monkeypatch.
+    setenv` alone can't affect it - a developer's local .env (e.g. one set
+    up to test the login gate manually) would otherwise silently enable the
+    auth gate for the whole suite and break every unauthenticated-request
+    test. Tests that specifically exercise the gate set this back to a
+    value themselves within the test body.
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "app_password", None)

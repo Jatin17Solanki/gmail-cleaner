@@ -99,6 +99,12 @@ class FiltersModel(BaseModel):
 # ----- Request Models -----
 
 
+class LoginRequest(BaseModel):
+    """Request to authenticate against the app's shared password."""
+
+    password: str = Field(default="", description="Shared app password")
+
+
 class ScanRequest(BaseModel):
     """Request to start email scan."""
 

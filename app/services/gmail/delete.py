@@ -27,6 +27,7 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
         return
 
     state.reset_delete_scan()
+    state.delete_scan_filters = filters
     state.delete_scan_status["message"] = "Connecting to Gmail..."
 
     service, error = get_gmail_service()
@@ -177,8 +178,16 @@ def get_delete_scan_results() -> list:
     return state.delete_scan_results.copy()
 
 
-def delete_emails_by_sender(sender: str) -> dict:
-    """Delete all emails from a specific sender."""
+def delete_emails_by_sender(sender: str, filters: Optional[dict] = None) -> dict:
+    """Delete emails from a specific sender, scoped to the given filters.
+
+    Args:
+        sender: Sender email address or domain.
+        filters: Filters that were active in the scan that surfaced this
+            sender (see build_gmail_query). Ensures delete only affects the
+            filtered subset the user reviewed, not every message from the
+            sender (#107).
+    """
     if not sender or not sender.strip():
         return {
             "success": False,
@@ -214,8 +223,10 @@ def delete_emails_by_sender(sender: str) -> dict:
         return {"success": False, "deleted": 0, "size_freed": 0, "message": error}
 
     try:
-        # Find all emails from sender
-        query = f"from:{sender}"
+        # Find all emails from sender, scoped to the active scan filters
+        query_filters = dict(filters or {})
+        query_filters["sender"] = sender
+        query = build_gmail_query(query_filters)
         results = (
             service.users()
             .messages()
@@ -274,8 +285,8 @@ def delete_emails_by_sender(sender: str) -> dict:
         return {"success": False, "deleted": 0, "size_freed": 0, "message": str(e)}
 
 
-def delete_emails_bulk(senders: list[str]) -> dict:
-    """Delete emails from multiple senders."""
+def delete_emails_bulk(senders: list[str], filters: Optional[dict] = None) -> dict:
+    """Delete emails from multiple senders, scoped to the given filters."""
     if not senders:
         return {
             "success": False,
@@ -289,7 +300,7 @@ def delete_emails_bulk(senders: list[str]) -> dict:
     errors = []
 
     for sender in senders:
-        result = delete_emails_by_sender(sender)
+        result = delete_emails_by_sender(sender, filters)
         if result["success"]:
             total_deleted += result["deleted"]
             total_size_freed += result.get("size_freed", 0)
@@ -321,10 +332,18 @@ def delete_emails_bulk(senders: list[str]) -> dict:
     }
 
 
-def delete_emails_bulk_background(senders: list[str]) -> None:
+def delete_emails_bulk_background(
+    senders: list[str], filters: Optional[dict] = None
+) -> None:
     """Delete emails from multiple senders with progress updates (background task).
 
     Optimized to collect all message IDs first, then batch delete in larger chunks.
+
+    Args:
+        senders: Sender email addresses or domains.
+        filters: Filters that were active in the scan that surfaced these
+            senders (see build_gmail_query) — deletion stays scoped to the
+            filtered subset the user reviewed (#107).
     """
     state.reset_delete_bulk()
 
@@ -356,7 +375,9 @@ def delete_emails_bulk_background(senders: list[str]) -> None:
         state.delete_bulk_status["message"] = f"Finding emails from {sender}..."
 
         try:
-            query = f"from:{sender}"
+            query_filters = dict(filters or {})
+            query_filters["sender"] = sender
+            query = build_gmail_query(query_filters)
             results = (
                 service.users()
                 .messages()

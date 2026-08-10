@@ -8,6 +8,7 @@ import logging
 from functools import partial
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
+from app.core import state
 from app.models import (
     ScanRequest,
     MarkReadRequest,
@@ -55,10 +56,34 @@ async def api_scan(request: ScanRequest, background_tasks: BackgroundTasks):
 
 
 @router.post("/sign-in")
-async def api_sign_in(background_tasks: BackgroundTasks):
-    """Trigger OAuth sign-in flow."""
-    background_tasks.add_task(get_gmail_service)
-    return {"status": "signing_in"}
+async def api_sign_in():
+    """Trigger OAuth sign-in flow.
+
+    Calls get_gmail_service() inline (not as a background task) so a
+    genuine failure - e.g. a previous sign-in attempt still pending - can
+    be surfaced to the caller immediately. The previous background-task
+    version always returned {"status": "signing_in"} regardless of what
+    actually happened server-side, silently swallowing that error. The
+    OAuth browser flow itself still runs in get_gmail_service()'s own
+    background thread and does not block this request.
+    """
+    try:
+        _service, error = get_gmail_service()
+    except Exception as e:
+        logger.exception("Error starting sign-in")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start sign-in",
+        ) from e
+
+    if error:
+        # "Sign-in started..." isn't a failure - the OAuth flow is now
+        # running in the background and the frontend should poll for it.
+        if error.startswith("Sign-in started"):
+            return {"status": "signing_in"}
+        return {"status": "error", "error": error}
+
+    return {"status": "signed_in"}
 
 
 @router.post("/sign-out")
@@ -118,7 +143,7 @@ async def api_delete_emails(request: DeleteEmailsRequest):
             detail="Sender email is required",
         )
     try:
-        return delete_emails_by_sender(request.sender)
+        return delete_emails_by_sender(request.sender, state.delete_scan_filters)
     except Exception as e:
         logger.exception("Error deleting emails")
         raise HTTPException(
@@ -132,7 +157,9 @@ async def api_delete_emails_bulk(
     request: DeleteBulkRequest, background_tasks: BackgroundTasks
 ):
     """Delete emails from multiple senders (background task with progress)."""
-    background_tasks.add_task(delete_emails_bulk_background, request.senders)
+    background_tasks.add_task(
+        delete_emails_bulk_background, request.senders, state.delete_scan_filters
+    )
     return {"status": "started"}
 
 
@@ -196,7 +223,10 @@ async def api_apply_label(
             detail="At least one sender is required",
         )
     background_tasks.add_task(
-        apply_label_to_senders_background, request.label_id, request.senders
+        apply_label_to_senders_background,
+        request.label_id,
+        request.senders,
+        state.delete_scan_filters,
     )
     return {"status": "started"}
 
@@ -217,7 +247,10 @@ async def api_remove_label(
             detail="At least one sender is required",
         )
     background_tasks.add_task(
-        remove_label_from_senders_background, request.label_id, request.senders
+        remove_label_from_senders_background,
+        request.label_id,
+        request.senders,
+        state.delete_scan_filters,
     )
     return {"status": "started"}
 
