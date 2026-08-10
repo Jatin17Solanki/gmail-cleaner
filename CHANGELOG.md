@@ -54,8 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{"status": "signing_in"}` regardless of what actually happened
 - The sign-in wait gave no feedback: a static "Signing in..." button with
   no indication of how long to expect, or that a "still pending" retry
-  message was even time-bound. Added a live elapsed-time counter on the
-  button, a status hint pointing at the browser tab, and made the
+  message was even time-bound. Added a live countdown on the button (time
+  remaining before polling gives up, not elapsed time counting up - an
+  increasing number reads as "still stuck", not "still on track"), a
+  status hint pointing at the browser tab, and made the
   "previous attempt still pending" message report the actual remaining
   time (based on when that attempt started) instead of a fixed number
   regardless of how much of the window had already passed. Sign-in errors

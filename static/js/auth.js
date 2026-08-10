@@ -125,7 +125,11 @@ GmailCleaner.Auth = {
                 this.updateUI(status);
             } else if (attempts < maxAttempts) {
                 if (signInBtn) {
-                    signInBtn.innerHTML = `<span>Signing in... (${attempts}s)</span>`;
+                    // Count down to when polling gives up, not up from zero -
+                    // an increasing number here reads as "still stuck", not
+                    // "still waiting, N seconds left before we give up".
+                    const remaining = maxAttempts - attempts;
+                    signInBtn.innerHTML = `<span>Signing in... (${remaining}s)</span>`;
                 }
                 // After ~10s, give a more specific nudge in case the browser
                 // tab was missed (blocked pop-up, opened behind the window, etc).
