@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callback server, and `/api/sign-in` surfaces a genuine failure (e.g. "a
   previous sign-in attempt is still pending") instead of always reporting
   `{"status": "signing_in"}` regardless of what actually happened
+- The sign-in wait gave no feedback: a static "Signing in..." button with
+  no indication of how long to expect, or that a "still pending" retry
+  message was even time-bound. Added a live elapsed-time counter on the
+  button, a status hint pointing at the browser tab, and made the
+  "previous attempt still pending" message report the actual remaining
+  time (based on when that attempt started) instead of a fixed number
+  regardless of how much of the window had already passed. Sign-in errors
+  now show as a toast instead of a blocking `alert()`
 
 ### Known issue (documented, not fixed in this round)
 - Scanning with a large limit (e.g. 5000) can return different results on

@@ -17,6 +17,7 @@ test_oauth_flow_desktop_mode_binds_to_localhost was flaky.
 """
 
 import threading
+import time
 from unittest.mock import Mock, mock_open, patch
 
 import pytest
@@ -572,3 +573,64 @@ class TestWaitForCallback:
 
         assert event.is_set()
         assert calls["count"] == 2
+
+
+class TestAlreadyInProgressMessage:
+    """Tests for get_gmail_service()'s "still pending" message when a
+    previous sign-in attempt hasn't cleared yet. Reports actual remaining
+    time (based on _auth_in_progress["started_at"]) rather than a static
+    "up to N seconds" regardless of how much time has really passed - a
+    user retrying near the end of the window should see that, not be told
+    the same fixed number every time."""
+
+    @patch("app.services.auth.settings")
+    @patch("app.services.auth.os.path.exists", return_value=False)
+    def test_reports_remaining_time_based_on_elapsed(self, mock_exists, mock_settings):
+        mock_settings.token_file = "token.json"
+        mock_settings.scopes = ["scope1", "scope2"]
+
+        with patch.dict(
+            auth._auth_in_progress,
+            {"active": True, "started_at": time.time() - 60},
+        ):
+            service, error = auth.get_gmail_service()
+
+        assert service is None
+        assert "still pending" in error
+        # ~90s timeout - 60s elapsed = ~30s remaining; allow a little slack
+        # for the time spent executing the test itself.
+        assert any(f"{n} second" in error for n in (28, 29, 30, 31, 32))
+
+    @patch("app.services.auth.settings")
+    @patch("app.services.auth.os.path.exists", return_value=False)
+    def test_remaining_time_never_goes_negative(self, mock_exists, mock_settings):
+        """If more time has elapsed than the timeout, the reported remaining
+        time should floor at 0, not go negative."""
+        mock_settings.token_file = "token.json"
+        mock_settings.scopes = ["scope1", "scope2"]
+
+        with patch.dict(
+            auth._auth_in_progress,
+            {"active": True, "started_at": time.time() - 1000},
+        ):
+            service, error = auth.get_gmail_service()
+
+        assert service is None
+        assert "0 second" in error
+
+    @patch("app.services.auth.settings")
+    @patch("app.services.auth.os.path.exists", return_value=False)
+    def test_missing_started_at_falls_back_to_full_timeout(
+        self, mock_exists, mock_settings
+    ):
+        """A dict without started_at (e.g. an older in-memory state right
+        after a deploy) shouldn't crash - should just report the full
+        timeout."""
+        mock_settings.token_file = "token.json"
+        mock_settings.scopes = ["scope1", "scope2"]
+
+        with patch.dict(auth._auth_in_progress, {"active": True, "started_at": None}):
+            service, error = auth.get_gmail_service()
+
+        assert service is None
+        assert f"{auth.OAUTH_CALLBACK_TIMEOUT_SECONDS} second" in error

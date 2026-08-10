@@ -25,8 +25,11 @@ from app.services.auth_handlers import OAuthCallbackHandler
 logger = logging.getLogger(__name__)
 
 
-# Track auth in progress
-_auth_in_progress = {"active": False}
+# Track auth in progress, and when it started so a caller hitting the
+# "already in progress" branch can be told how much longer to expect to
+# wait, instead of a generic "up to N seconds" regardless of actual elapsed
+# time.
+_auth_in_progress = {"active": False, "started_at": None}
 
 # How long to wait for the browser-based OAuth consent callback before
 # giving up and releasing _auth_in_progress. Keep this in sync with the
@@ -545,6 +548,7 @@ def _run_oauth_and_save_token(creds_path: str) -> None:
     finally:
         # Always reset auth state, even on error
         _auth_in_progress["active"] = False
+        _auth_in_progress["started_at"] = None
         state.pending_auth_url["url"] = None
         with state.oauth_state_lock:
             state.oauth_state["state"] = None
@@ -591,11 +595,14 @@ def get_gmail_service():
             # Prevent multiple OAuth attempts (thread-safe check)
             # Note: Small race condition window, but acceptable for this use case
             if _auth_in_progress.get("active", False):
+                started_at = _auth_in_progress.get("started_at")
+                elapsed = time.time() - started_at if started_at else 0
+                remaining = max(0, round(OAUTH_CALLBACK_TIMEOUT_SECONDS - elapsed))
                 return (
                     None,
                     "A previous sign-in attempt is still pending. If you closed "
-                    "that browser tab, it will clear automatically within "
-                    f"{OAUTH_CALLBACK_TIMEOUT_SECONDS} seconds - then try again.",
+                    "that browser tab, it will clear automatically in about "
+                    f"{remaining} seconds - then try again.",
                 )
 
             creds_path = _get_credentials_path()
@@ -615,6 +622,7 @@ def get_gmail_service():
 
             # Start OAuth in background thread so server stays responsive
             _auth_in_progress["active"] = True
+            _auth_in_progress["started_at"] = time.time()
 
             oauth_thread = threading.Thread(
                 target=_run_oauth_and_save_token, args=(creds_path,), daemon=True
