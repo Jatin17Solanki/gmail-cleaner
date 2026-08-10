@@ -134,8 +134,28 @@ class TestDeleteEmailsWritesOperationLog:
         assert entry["action_type"] == "delete"
         assert set(entry["message_ids"]) == {"m1", "m2"}
         assert entry["added_labels"] == ["TRASH"]
-        assert entry["removed_labels"] == []
+        # Restoring must put deleted mail back in the Inbox, not just out of
+        # Trash - Gmail doesn't restore INBOX membership on its own when the
+        # TRASH label is removed, so the log has to record its removal too.
+        assert entry["removed_labels"] == ["INBOX"]
         assert entry["summary"]["senders"] == ["newsletter@example.com"]
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_delete_by_sender_removes_inbox_label(self, mock_get_service):
+        """Regression test: trashing via batchModify doesn't restore INBOX
+        membership on its own when later untrashed - deleting must
+        explicitly remove INBOX so a later restore can explicitly re-add it,
+        putting the message back in the Inbox rather than stranding it in
+        "All Mail" only."""
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        delete_emails_by_sender("newsletter@example.com")
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        body = batch_modify.call_args.kwargs["body"]
+        assert body["addLabelIds"] == ["TRASH"]
+        assert body["removeLabelIds"] == ["INBOX"]
 
     @patch("app.services.gmail.delete.get_gmail_service")
     def test_delete_by_sender_no_op_does_not_log(self, mock_get_service):
@@ -157,6 +177,7 @@ class TestDeleteEmailsWritesOperationLog:
         assert len(entries) == 1
         entry = entries[0]
         assert entry["action_type"] == "delete"
+        assert entry["removed_labels"] == ["INBOX"]
         assert entry["summary"]["senders"] == ["a@example.com", "b@example.com"]
         # One matching message per sender, from the shared mock list() response
         assert len(entry["message_ids"]) == 2

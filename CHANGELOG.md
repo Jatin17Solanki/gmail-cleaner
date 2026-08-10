@@ -32,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- Restoring a deleted email moved it out of Trash but not back into the
+  Inbox (only visible in "All Mail" afterward). Root cause: the delete
+  path added the `TRASH` label but never explicitly removed `INBOX`, so
+  the operation log's recorded diff had nothing to re-add on restore.
+  `delete_emails_by_sender` and `delete_emails_bulk_background` now
+  explicitly remove `INBOX` alongside adding `TRASH`, and log that removal,
+  so restoring correctly re-adds `INBOX`
+- The Restore screen's summary for a bulk/multi-sender action only showed a
+  sender *count* ("Deleted 2 emails · 2 senders"), not which senders -
+  now lists up to 3 sender addresses inline (with a "+N more" suffix for
+  larger batches)
+- The shared filter bar (used by Unsubscribe/Delete/Mark-as-read to scope
+  their scans) was rendered globally and stayed visible on every view,
+  including the new Restore tab where it has no function. Filter bar
+  visibility is now derived from the active view instead of only being
+  toggled at sign-in/sign-out
 - Timezone handling in CSV filename generation (now uses UTC)
 - Missing return type annotations in multiple functions
 - Closure variable binding in batch callback functions

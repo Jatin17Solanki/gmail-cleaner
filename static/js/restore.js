@@ -72,11 +72,12 @@ GmailCleaner.Restore = {
             const label = entry.label_name ? `"${entry.label_name}"` : '';
             return `${verb} ${count} ${noun} ${label}`.trim();
         }
-        if (entry.senders && entry.senders.length === 1) {
-            return `${verb} ${count} ${noun} · ${entry.senders[0]}`;
-        }
-        if (entry.senders && entry.senders.length > 1) {
-            return `${verb} ${count} ${noun} · ${entry.senders.length} senders`;
+        if (entry.senders && entry.senders.length > 0) {
+            const maxShown = 3;
+            const shown = entry.senders.slice(0, maxShown).join(', ');
+            const extra = entry.senders.length - maxShown;
+            const senderList = extra > 0 ? `${shown} +${extra} more` : shown;
+            return `${verb} ${count} ${noun} · ${senderList}`;
         }
         return `${verb} ${count} ${noun}`;
     },

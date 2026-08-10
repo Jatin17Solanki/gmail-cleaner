@@ -267,7 +267,12 @@ def delete_emails_by_sender(sender: str, filters: Optional[dict] = None) -> dict
         for i in range(0, len(ids), batch_size):
             batch = ids[i : i + batch_size]
             service.users().messages().batchModify(
-                userId="me", body={"ids": batch, "addLabelIds": ["TRASH"]}
+                userId="me",
+                body={
+                    "ids": batch,
+                    "addLabelIds": ["TRASH"],
+                    "removeLabelIds": ["INBOX"],
+                },
             ).execute()
             deleted += len(batch)
             deleted_ids.extend(batch)
@@ -294,7 +299,7 @@ def delete_emails_by_sender(sender: str, filters: Optional[dict] = None) -> dict
                 action_type="delete",
                 message_ids=deleted_ids,
                 added_labels=["TRASH"],
-                removed_labels=[],
+                removed_labels=["INBOX"],
                 summary={"senders": [sender]},
             )
 
@@ -436,7 +441,12 @@ def delete_emails_bulk_background(
         for i in range(0, total_emails, batch_size):
             batch = all_message_ids[i : i + batch_size]
             service.users().messages().batchModify(
-                userId="me", body={"ids": batch, "addLabelIds": ["TRASH"]}
+                userId="me",
+                body={
+                    "ids": batch,
+                    "addLabelIds": ["TRASH"],
+                    "removeLabelIds": ["INBOX"],
+                },
             ).execute()
             deleted += len(batch)
             deleted_ids.extend(batch)
@@ -456,7 +466,7 @@ def delete_emails_bulk_background(
             action_type="delete",
             message_ids=deleted_ids,
             added_labels=["TRASH"],
-            removed_labels=[],
+            removed_labels=["INBOX"],
             summary={"senders": senders},
         )
 

@@ -4,6 +4,10 @@
 
 window.GmailCleaner = window.GmailCleaner || {};
 
+// Views that scan Gmail using the shared filter bar's criteria. Restore
+// (and any future non-scanning view) has no use for it.
+const FILTER_ENABLED_VIEWS = ['unsubscribe', 'delete', 'markread'];
+
 GmailCleaner.UI = {
     setupNavigation() {
         document.querySelectorAll('.nav-item').forEach(item => {
@@ -37,6 +41,12 @@ GmailCleaner.UI = {
                 item.classList.add('active');
             }
         });
+
+        // The filter bar only applies to scanning views - hide it everywhere
+        // else (e.g. Restore has nothing to filter).
+        if (GmailCleaner.Filters) {
+            GmailCleaner.Filters.showBar(FILTER_ENABLED_VIEWS.includes(viewName));
+        }
 
         // Special handling for unsubscribe view
         if (viewName === 'unsubscribe') {
