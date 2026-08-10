@@ -82,6 +82,15 @@ existing patterns.
   for repo setup, not a precedent.
 - Update the README's Roadmap table (Planned → Done) in the same PR that
   completes a phase — it should never go stale relative to actual progress.
+- **Update `PROGRESS.md` at every phase-status change**, not just at the
+  very end of a session: when a phase's PR opens (mark it implemented,
+  state the PR is open/pending review), when the human confirms it's
+  merged (update current-state and move the next-phase pointer forward),
+  and when new backlog items surface (e.g. a bug found during manual
+  testing that gets deferred rather than fixed immediately). PROGRESS.md
+  is what a future session with zero memory of this one relies on — treat
+  it as done-with-the-phase only once it reflects reality, the same bar as
+  the README roadmap and `CHANGELOG.md`.
 
 ## Handling ambiguity
 
