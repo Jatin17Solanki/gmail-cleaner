@@ -72,14 +72,36 @@ existing patterns.
 
 ## Git workflow
 
-- One branch per phase (Phase 0 through the final E2E phase).
+- One branch per phase (Phase 0 through the final E2E phase), named
+  `phase-N-short-description` (e.g. `phase-1-correctness-safety-fixes`).
 - Cadence per phase: implement → write/update tests → run tests →
   open PR → **stop and wait for human review/merge** → next phase.
 - Never merge your own PRs. Never start the next phase until the previous
   one's PR is confirmed merged.
+- **Starting a new phase's branch** (the actual mechanics, not just the
+  policy above): confirm the previous phase's PR is genuinely merged first
+  — `gh pr view <N>` or check whether its commits are in `git log
+  origin/main` — see `PROGRESS.md`'s "Current state" for which PR to
+  check. Then `git status` (handle anything uncommitted per the standard
+  git safety rules), `git checkout main && git pull`, and branch from that
+  up-to-date `main`. Never branch from a stale local `main` or from
+  another phase's branch.
 - Exception: Phase 0.5 (baseline housekeeping commit) is pushed directly to
   `main`, skipping the branch-per-phase ritual — that's a one-time carve-out
   for repo setup, not a precedent.
+- **Bugs found while a phase's PR is under human review**: fix them as
+  additional commits on that same branch/PR — don't open a new PR or wait
+  for the next phase. Document each fix in the PR description and in
+  `CHANGELOG.md`'s `[Unreleased]` section, same as the original phase
+  work. (Phase 1's PR took three rounds of this before merge.)
+- **A bug or flaky test found that's unrelated to the current phase's
+  scope**: don't fix it unprompted. First confirm it actually predates
+  your changes (e.g. `git stash` and rerun, or check it against `main`),
+  then flag it to the human and log it — `CHANGELOG.md`'s "Known issue"
+  section for something requiring real design work, or `PROGRESS.md`'s
+  backlog for something smaller — rather than silently expanding the
+  phase's scope. Exception: fix it inline if leaving it makes your own
+  phase's tests unreliable (e.g. it's actively causing false failures).
 - Update the README's Roadmap table (Planned → Done) in the same PR that
   completes a phase — it should never go stale relative to actual progress.
 - **Update `PROGRESS.md` at every phase-status change**, not just at the
