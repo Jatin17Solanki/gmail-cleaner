@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+**Before anything else, read `PROGRESS.md` at the repo root** (gitignored,
+exists on disk — not this file). It's the current-state log: what's shipped,
+what's in flight, what's backlogged, what phase comes next. This file
+(CLAUDE.md) only covers stable conventions that don't change phase to
+phase — it will not tell you where things currently stand.
+
 Guidance for AI coding assistants working in this repo, so consistency holds
 across sessions that may be days or weeks apart. The full spec is `PRD.md`
 at the repo root (gitignored — exists on disk, not committed; read it before

@@ -30,6 +30,10 @@ IMPROVEMENTS.md
 # Fork planning spec (needed on disk for Claude Code, not for public history)
 PRD.md
 
+# Session continuity log for AI coding assistants (local state, not public
+# history — see CLAUDE.md for why this stays out of git)
+PROGRESS.md
+
 # Test/Coverage artifacts
 .coverage
 .pytest_cache/
