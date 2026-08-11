@@ -234,20 +234,43 @@ class QuotaTracker:
             callback(msg_id, None, exceptions_by_id.get(msg_id))
 
 
-# Module-level singleton, same pattern as app.core.state's `state` — every
-# Gmail-op module shares one rolling window since the 6,000/min cap is
-# per-user, not per-operation.
-tracker = QuotaTracker()
+# Gmail's 6,000-units/minute cap is tracked per Google account, not per
+# process — so each signed-in account (Phase 4a's multi-account switcher)
+# needs its own independent rolling window. Sharing one global tracker
+# would make switching accounts inherit whatever quota "debt" the
+# previously-active account had just run up, blocking a completely fresh
+# account for no real reason.
+_trackers: dict[str, QuotaTracker] = {}
+_trackers_lock = threading.Lock()
+
+
+def _tracker_for_account(account_key: str) -> QuotaTracker:
+    with _trackers_lock:
+        if account_key not in _trackers:
+            _trackers[account_key] = QuotaTracker()
+        return _trackers[account_key]
+
+
+def _active_tracker() -> QuotaTracker:
+    # Deferred import: avoids relying on app/services/__init__.py's
+    # exact import ordering to keep this side of the package free of
+    # circular-import fragility (same reasoning as auth.py's deferred
+    # `from app.services.gmail import quota`).
+    from app.services import accounts
+
+    return _tracker_for_account(accounts.get_active_account() or "_unknown")
 
 
 def gate(cost: int, status_dict: Optional[dict] = None) -> None:
-    tracker.gate(cost, status_dict)
+    _active_tracker().gate(cost, status_dict)
 
 
 def execute_with_backoff(
     request, cost: int, status_dict: Optional[dict] = None, max_retries: int = 5
 ):
-    return tracker.execute_with_backoff(request, cost, status_dict, max_retries)
+    return _active_tracker().execute_with_backoff(
+        request, cost, status_dict, max_retries
+    )
 
 
 def run_batched_gets(
@@ -260,7 +283,7 @@ def run_batched_gets(
     batch_size: int = 100,
     max_retry_passes: int = 1,
 ) -> None:
-    tracker.run_batched_gets(
+    _active_tracker().run_batched_gets(
         service,
         ids,
         request_factory,

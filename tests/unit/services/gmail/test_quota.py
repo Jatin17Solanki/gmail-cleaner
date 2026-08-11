@@ -8,12 +8,22 @@ nothing here does a real wait.
 
 import json
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from googleapiclient.errors import HttpError
 
+from app.services.gmail import quota as quota_module
 from app.services.gmail.quota import QuotaTracker
+
+
+@pytest.fixture(autouse=True)
+def _isolate_quota_trackers():
+    """Each test gets a clean per-account tracker registry (module-level
+    dict, shared across the whole test session otherwise)."""
+    quota_module._trackers.clear()
+    yield
+    quota_module._trackers.clear()
 
 
 def _http_error(status: int, reason: str | None = None) -> HttpError:
@@ -259,3 +269,39 @@ class TestRunBatchedGets:
         )
 
         assert calls == [("m1", None, second_error)]
+
+
+class TestPerAccountTrackerIsolation:
+    """Gmail's 6,000/min cap is tracked per Google account, not per process
+    (Phase 4a's multi-account switcher) — each active account must get its
+    own independent rolling window, not share one global bucket."""
+
+    def test_different_active_accounts_get_independent_trackers(self):
+        with patch(
+            "app.services.accounts.get_active_account", return_value="a@example.com"
+        ):
+            quota_module.gate(3000)
+        with patch(
+            "app.services.accounts.get_active_account", return_value="b@example.com"
+        ):
+            quota_module.gate(3000)
+
+        assert quota_module._tracker_for_account("a@example.com").usage() == 3000
+        assert quota_module._tracker_for_account("b@example.com").usage() == 3000
+
+    def test_switching_active_account_does_not_inherit_previous_usage(self):
+        with patch(
+            "app.services.accounts.get_active_account", return_value="a@example.com"
+        ):
+            # Push account "a" close to its own cap.
+            quota_module.gate(5900)
+
+        with patch(
+            "app.services.accounts.get_active_account", return_value="b@example.com"
+        ):
+            # A freshly-switched-to account must not inherit "a"'s usage —
+            # this charge must not block even though "a" is near its cap.
+            quota_module.gate(100)
+
+        assert quota_module._tracker_for_account("a@example.com").usage() == 5900
+        assert quota_module._tracker_for_account("b@example.com").usage() == 100

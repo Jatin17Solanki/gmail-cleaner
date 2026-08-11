@@ -181,6 +181,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- Human manual-testing round on the Phase 4a2 PR: the quota tracker was a
+  single global instance shared across every signed-in account, even
+  though Gmail's 6,000-units/minute cap is tracked per Google account, not
+  per process. Switching accounts (Phase 4a's multi-account switcher) made
+  the newly-active account inherit whatever quota usage the previously-
+  active account had just run up - reproduced by scanning account 2, then
+  immediately hitting a false "approaching rate limit" block on switching
+  to account 1, with the displayed wait time jumping unpredictably (each
+  scan batch racing against the other account's leftover usage in the same
+  shared window). Fixed by keying `QuotaTracker` instances per account
+  email (`app/services/gmail/quota.py`'s `_tracker_for_account()`,
+  resolved via `accounts.get_active_account()`) instead of one process-wide
+  singleton - every call site already goes through the module-level
+  `gate()`/`execute_with_backoff()`/`run_batched_gets()` wrappers, so no
+  call-site changes were needed, just the routing underneath them
 - Human manual-testing round on the Phase 4a PR: the topbar account chip
   stayed on the previous account's email after "Add another account"
   completed (the dropdown showed the new account checkmarked correctly,
