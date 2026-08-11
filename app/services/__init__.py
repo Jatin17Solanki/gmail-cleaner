@@ -47,4 +47,7 @@ from .gmail import (
     # Mark Important
     mark_important_background,
     get_important_status,
+    # Restore
+    restore_operation,
 )
+from . import operation_log

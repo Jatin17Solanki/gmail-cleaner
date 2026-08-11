@@ -86,6 +86,8 @@ Lets make this tool a better one by improving as much as possible, All features 
 
 ### Restore-from-Trash
 
+**Status: Done**
+
 An app-scoped operation log (not "restore everything in Gmail Trash") — every delete, archive, mark-as-read, or label action taken through the app is logged and individually reversible with one click, with a 30-day retention window on the log itself. Permanent feature, always visible, not a dev-only tool.
 
 ### UI/UX redesign

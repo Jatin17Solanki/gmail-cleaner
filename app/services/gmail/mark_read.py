@@ -7,6 +7,7 @@ Functions for marking emails as read.
 from typing import Optional
 
 from app.core import state
+from app.services import operation_log
 from app.services.auth import get_gmail_service
 from app.services.gmail.helpers import build_gmail_query
 
@@ -55,6 +56,7 @@ def mark_emails_as_read(count: int = 100, filters: Optional[dict] = None):
         state.mark_read_status["done"] = True
         return
 
+    marked_ids: list[str] = []
     try:
         state.mark_read_status["message"] = "Finding unread emails..."
 
@@ -105,6 +107,7 @@ def mark_emails_as_read(count: int = 100, filters: Optional[dict] = None):
                 ).execute()
 
                 marked += len(ids)
+                marked_ids.extend(ids)
                 state.mark_read_status["message"] = f"Marked {marked} as read..."
                 state.mark_read_status["marked_count"] = marked
 
@@ -129,6 +132,17 @@ def mark_emails_as_read(count: int = 100, filters: Optional[dict] = None):
     except Exception as e:
         state.mark_read_status["error"] = str(e)
         state.mark_read_status["done"] = True
+    finally:
+        # Log whatever actually succeeded, even if a later batch raised —
+        # restoring must only ever cover messages truly modified.
+        if marked_ids:
+            operation_log.append_entry(
+                action_type="mark_read",
+                message_ids=marked_ids,
+                added_labels=[],
+                removed_labels=["UNREAD"],
+                summary={},
+            )
 
 
 def get_mark_read_status() -> dict:

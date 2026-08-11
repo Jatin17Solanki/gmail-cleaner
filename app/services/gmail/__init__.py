@@ -13,6 +13,7 @@ This module is split into multiple files for better organization:
 - labels.py: Label management operations
 - archive.py: Archive operations
 - important.py: Mark important operations
+- restore.py: Restore operations (reverses an operation-log entry)
 """
 
 # Import all functions for backward compatibility
@@ -67,6 +68,9 @@ from app.services.gmail.important import (
     mark_important_background,
     get_important_status,
 )
+from app.services.gmail.restore import (
+    restore_operation,
+)
 
 # Export private helper functions with underscore-prefixed aliases for backward compatibility.
 # These are used by tests that import the original function names from this module.
@@ -110,6 +114,8 @@ __all__ = [
     "get_mark_read_status",
     "get_unread_count",
     "mark_emails_as_read",
+    # Restore
+    "restore_operation",
     # Private helpers (for testing)
     "_get_sender_info",
     "_get_subject",

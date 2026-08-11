@@ -7,6 +7,7 @@ Functions for archiving emails (removing from inbox).
 import time
 
 from app.core import state
+from app.services import operation_log
 from app.services.auth import get_gmail_service
 
 
@@ -23,6 +24,7 @@ def archive_emails_background(senders: list[str]):
     state.archive_status["total_senders"] = len(senders)
     state.archive_status["message"] = "Starting archive..."
 
+    archived_ids: list[str] = []
     try:
         service, error = get_gmail_service()
         if error:
@@ -67,6 +69,7 @@ def archive_emails_background(senders: list[str]):
                     userId="me", body={"ids": batch_ids, "removeLabelIds": ["INBOX"]}
                 ).execute()
                 total_archived += len(batch_ids)
+                archived_ids.extend(batch_ids)
 
                 # Throttle every 500 emails (check at 100, 600, 1100, etc.)
                 if (j + 100) % 500 == 0:
@@ -83,6 +86,17 @@ def archive_emails_background(senders: list[str]):
         state.archive_status["error"] = f"{e!s}"
         state.archive_status["done"] = True
         state.archive_status["message"] = f"Error: {e!s}"
+    finally:
+        # Log whatever actually succeeded, even if a later batch raised —
+        # restoring must only ever cover messages truly modified.
+        if archived_ids:
+            operation_log.append_entry(
+                action_type="archive",
+                message_ids=archived_ids,
+                added_labels=[],
+                removed_labels=["INBOX"],
+                summary={"senders": senders},
+            )
 
 
 def get_archive_status() -> dict:

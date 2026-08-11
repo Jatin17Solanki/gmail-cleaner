@@ -11,6 +11,7 @@ from collections import defaultdict
 from typing import Optional
 
 from app.core import state
+from app.services import operation_log
 from app.services.auth import get_gmail_service
 from app.services.gmail.helpers import build_gmail_query, get_sender_info, get_subject
 
@@ -222,6 +223,7 @@ def delete_emails_by_sender(sender: str, filters: Optional[dict] = None) -> dict
     if error:
         return {"success": False, "deleted": 0, "size_freed": 0, "message": error}
 
+    deleted_ids: list[str] = []
     try:
         # Find all emails from sender, scoped to the active scan filters
         query_filters = dict(filters or {})
@@ -265,9 +267,15 @@ def delete_emails_by_sender(sender: str, filters: Optional[dict] = None) -> dict
         for i in range(0, len(ids), batch_size):
             batch = ids[i : i + batch_size]
             service.users().messages().batchModify(
-                userId="me", body={"ids": batch, "addLabelIds": ["TRASH"]}
+                userId="me",
+                body={
+                    "ids": batch,
+                    "addLabelIds": ["TRASH"],
+                    "removeLabelIds": ["INBOX"],
+                },
             ).execute()
             deleted += len(batch)
+            deleted_ids.extend(batch)
 
         # Remove sender from cached results
         state.delete_scan_results = [
@@ -283,6 +291,17 @@ def delete_emails_by_sender(sender: str, filters: Optional[dict] = None) -> dict
 
     except Exception as e:
         return {"success": False, "deleted": 0, "size_freed": 0, "message": str(e)}
+    finally:
+        # Log whatever actually succeeded, even if a later batch raised —
+        # restoring must only ever cover messages truly modified.
+        if deleted_ids:
+            operation_log.append_entry(
+                action_type="delete",
+                message_ids=deleted_ids,
+                added_labels=["TRASH"],
+                removed_labels=["INBOX"],
+                summary={"senders": [sender]},
+            )
 
 
 def delete_emails_bulk(senders: list[str], filters: Optional[dict] = None) -> dict:
@@ -416,14 +435,21 @@ def delete_emails_bulk_background(
 
     batch_size = 1000  # Gmail allows up to 1000 per batchModify
     deleted = 0
+    deleted_ids = []
 
     try:
         for i in range(0, total_emails, batch_size):
             batch = all_message_ids[i : i + batch_size]
             service.users().messages().batchModify(
-                userId="me", body={"ids": batch, "addLabelIds": ["TRASH"]}
+                userId="me",
+                body={
+                    "ids": batch,
+                    "addLabelIds": ["TRASH"],
+                    "removeLabelIds": ["INBOX"],
+                },
             ).execute()
             deleted += len(batch)
+            deleted_ids.extend(batch)
             state.delete_bulk_status["deleted_count"] = deleted
             # Progress: 40-100% for deleting
             state.delete_bulk_status["progress"] = 40 + int(
@@ -434,6 +460,15 @@ def delete_emails_bulk_background(
             )
     except Exception as e:
         errors.append(f"Batch delete error: {str(e)}")
+
+    if deleted_ids:
+        operation_log.append_entry(
+            action_type="delete",
+            message_ids=deleted_ids,
+            added_labels=["TRASH"],
+            removed_labels=["INBOX"],
+            summary={"senders": senders},
+        )
 
     # Remove deleted senders from cached scan results
     state.delete_scan_results = [

@@ -15,6 +15,7 @@ credentials.json
 # Docker-mounted data volume (tokens, routines, operation log, auth hash)
 data/
 auth.json
+operations.json
 
 # IDE
 .vscode/

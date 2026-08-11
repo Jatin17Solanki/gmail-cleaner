@@ -9,6 +9,7 @@ from that sender (#107), and defaults to Inbox-only like the scan (#104).
 from unittest.mock import MagicMock, patch
 
 from app.core import state
+from app.services import operation_log
 from app.services.gmail.delete import (
     delete_emails_bulk_background,
     delete_emails_by_sender,
@@ -115,3 +116,68 @@ class TestScanSendersForDeletePersistsFilters:
         scan_senders_for_delete(limit=10, filters=None)
 
         assert state.delete_scan_filters is None
+
+
+class TestDeleteEmailsWritesOperationLog:
+    """Phase 2: a successful delete should be restorable via the operation log."""
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_delete_by_sender_logs_entry(self, mock_get_service):
+        service = _mock_service({"messages": [{"id": "m1"}, {"id": "m2"}]})
+        mock_get_service.return_value = (service, None)
+
+        delete_emails_by_sender("newsletter@example.com")
+
+        entries = operation_log.list_entries()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["action_type"] == "delete"
+        assert set(entry["message_ids"]) == {"m1", "m2"}
+        assert entry["added_labels"] == ["TRASH"]
+        # Restoring must put deleted mail back in the Inbox, not just out of
+        # Trash - Gmail doesn't restore INBOX membership on its own when the
+        # TRASH label is removed, so the log has to record its removal too.
+        assert entry["removed_labels"] == ["INBOX"]
+        assert entry["summary"]["senders"] == ["newsletter@example.com"]
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_delete_by_sender_removes_inbox_label(self, mock_get_service):
+        """Regression test: trashing via batchModify doesn't restore INBOX
+        membership on its own when later untrashed - deleting must
+        explicitly remove INBOX so a later restore can explicitly re-add it,
+        putting the message back in the Inbox rather than stranding it in
+        "All Mail" only."""
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        delete_emails_by_sender("newsletter@example.com")
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        body = batch_modify.call_args.kwargs["body"]
+        assert body["addLabelIds"] == ["TRASH"]
+        assert body["removeLabelIds"] == ["INBOX"]
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_delete_by_sender_no_op_does_not_log(self, mock_get_service):
+        service = _mock_service({"messages": []})
+        mock_get_service.return_value = (service, None)
+
+        delete_emails_by_sender("newsletter@example.com")
+
+        assert operation_log.list_entries() == []
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_bulk_delete_logs_one_entry_for_all_senders(self, mock_get_service):
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        delete_emails_bulk_background(["a@example.com", "b@example.com"])
+
+        entries = operation_log.list_entries()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["action_type"] == "delete"
+        assert entry["removed_labels"] == ["INBOX"]
+        assert entry["summary"]["senders"] == ["a@example.com", "b@example.com"]
+        # One matching message per sender, from the shared mock list() response
+        assert len(entry["message_ids"]) == 2

@@ -1059,3 +1059,47 @@
     font-size: 12px;
     color: var(--text-tertiary);
 }
+
+/* Restore view */
+.card-header.card-header-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.restore-note {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.restore-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.restore-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.restore-item:last-child {
+    border-bottom: none;
+}
+
+.restore-item-title {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.restore-item-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
