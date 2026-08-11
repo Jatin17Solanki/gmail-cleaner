@@ -51,6 +51,10 @@ GmailCleaner.UI = {
         if (viewName === 'restore') {
             GmailCleaner.Restore.loadEntries();
         }
+
+        if (viewName === 'routines') {
+            GmailCleaner.Routines.loadRoutines();
+        }
     },
 
     escapeHtml(text) {

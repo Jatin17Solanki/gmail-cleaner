@@ -508,6 +508,21 @@ body {
   gap: 8px;
 }
 
+/* ----- Centered confirm modal (Phase 4b: Routine run confirm) -----
+   Same full-coverage/dimming approach as .drawer-overlay above, but
+   centered instead of right-anchored - matches wireframes/
+   routines-confirm.html's overlay treatment. */
+
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 27, 22, 0.35);
+}
+
 .date-range-fallback-note {
   font-size: 11px;
   color: var(--text-muted);

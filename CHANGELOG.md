@@ -207,6 +207,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     possible." Shared across Delete/Archive/Mark-as-read since all three
     use the same `sender_view` Jinja macro. New tests
     `TestEstimateScanSeconds`.
+- Phase 4b: Routines. A saved, named preset - a sender list, a relative age
+  threshold, and one or more actions (delete / archive / mark_read / label,
+  not delete-only) - that re-runs the same lookup with one click instead of
+  re-entering filters every time. Scoped to a single account (PRD: "not
+  spanning multiple accounts"); manual trigger only, with a `schedule`
+  field always `null` in the stored schema so a future cron trigger can be
+  added without restructuring existing data.
+  - New `app/services/routines.py`: flat-file JSON CRUD storage
+    (`./data/routines.json`, sibling of `operations.json`/`accounts.json`),
+    account-scoped the same way `operation_log.py` scopes restore entries -
+    a shared file filtered by `account_email`, not one file per account.
+  - New `app/services/gmail/routines.py`: `preview_routine()` (synchronous
+    per-sender + total match counts via `messages.list()` only, no writes -
+    the required preview/confirm step, "never executes silently on click")
+    and `run_routine_background()`, which combines every selected action
+    into a single `addLabelIds`/`removeLabelIds` diff (e.g. Delete + Label
+    becomes one `batchModify` body adding `TRASH` and the label, removing
+    `INBOX`) applied once across all matched messages from all senders,
+    rather than running each action as its own pass. Logs one
+    operation-log entry per run, tagged with the Routine's name as
+    `source` - this is what makes a run undoable via Restore, per PRD,
+    with no separate undo mechanism.
+  - New `app/api/routines.py`: `GET`/`POST /api/routines`,
+    `DELETE /api/routines/{id}`, `POST /api/routines/{id}/preview`,
+    `POST /api/routines/{id}/run` (background task), and
+    `GET /api/routines/run-status`, all scoped to
+    `accounts.get_active_account()`.
+  - Frontend: real "Routines" list/create-form/confirm-modal
+    (`templates/index.html`, new `static/js/routines.js`) replacing the
+    Phase 3 placeholder view - sender chips, an actions checklist with an
+    inline label picker when "Label" is selected, and a centered confirm
+    modal (new `.modal-overlay` CSS, the same full-coverage/dimming
+    approach as the existing right-anchored `.drawer-overlay`) showing
+    per-sender counts before a run, per `wireframes/routines-list.html`/
+    `routines-create.html`/`routines-confirm.html`.
+  - New tests: `tests/unit/services/test_routines.py` (CRUD storage),
+    `tests/unit/services/gmail/test_routines.py` (label-diff combination,
+    preview, run, account scoping), `tests/unit/api/test_api_routines.py`,
+    and `CreateRoutineRequest` validation cases in
+    `tests/unit/models/test_schemas.py`. 411/411 tests passing (up from
+    339).
+  - **Bug found and fixed during this phase's own manual verification**:
+    the sidebar's Routines nav item still carried the Phase 3 placeholder's
+    `nav-item-disabled` class and a "Coming in a future phase" tooltip,
+    which silently blocked every click - left over from before this phase
+    built the real view.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

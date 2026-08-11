@@ -129,6 +129,19 @@ class AppState:
         }
         self.markread_scan_filters: Optional[dict] = None
 
+        # Routine run state (Phase 4b) - background execution of a saved
+        # Routine's combined action(s), mirroring archive_status/
+        # label_operation_status's shape.
+        self.routine_run_status: dict = {
+            "progress": 0,
+            "message": "Ready",
+            "done": False,
+            "error": None,
+            "affected_count": 0,
+            "total_senders": 0,
+            "current_sender": 0,
+        }
+
     def reset_scan(self):
         """Reset scan state."""
         self.scan_results = []
@@ -244,6 +257,18 @@ class AppState:
             "estimated_seconds": None,
         }
         self.markread_scan_filters = None
+
+    def reset_routine_run(self):
+        """Reset routine run state."""
+        self.routine_run_status = {
+            "progress": 0,
+            "message": "Ready",
+            "done": False,
+            "error": None,
+            "affected_count": 0,
+            "total_senders": 0,
+            "current_sender": 0,
+        }
 
 
 # Global state instance

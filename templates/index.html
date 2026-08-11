@@ -144,7 +144,7 @@
       <a href="#" class="nav-item active" data-view="delete"><i class="ti ti-trash"></i><span>Delete</span></a>
       <a href="#" class="nav-item" data-view="markread"><i class="ti ti-mail-opened"></i><span>Mark as read</span></a>
       <a href="#" class="nav-item" data-view="archive"><i class="ti ti-archive"></i><span>Archive</span></a>
-      <a href="#" class="nav-item nav-item-disabled" data-view="routines" title="Coming in a future phase"><i class="ti ti-repeat"></i><span>Routines</span></a>
+      <a href="#" class="nav-item" data-view="routines"><i class="ti ti-repeat"></i><span>Routines</span></a>
       <a href="#" class="nav-item" data-view="restore"><i class="ti ti-history"></i><span>Restore</span></a>
     </nav>
   </aside>
@@ -173,12 +173,87 @@
     {{ sender_view('archive', 'archive', 'Archive', 'Scan to find email senders', "We'll show you who's sending you the most emails so you can archive them out of your inbox.") }}
 
     <div class="view hidden" id="routinesView">
-      <div class="account-bar" style="border-bottom:none">
+      <div class="topbar">
+        <button class="btn btn-primary" id="routinesNewBtn" style="margin-left:auto">
+          <i class="ti ti-plus"></i> New routine
+        </button>
       </div>
-      <div class="empty-state" style="flex:1">
-        <i class="ti ti-repeat" style="font-size:64px;color:var(--text-muted)"></i>
-        <h2>Routines are coming in a future phase</h2>
-        <p>Saved, named presets that scan, preview, and act on a sender list in one click - not built yet.</p>
+
+      <div class="list-area" id="routinesListSection">
+        <div class="empty-state hidden" id="routinesEmpty">
+          <i class="ti ti-repeat" style="font-size:64px;color:var(--text-muted)"></i>
+          <h2>No routines yet</h2>
+          <p>Save a sender list, age threshold, and action set as a Routine so you can run it again in one click.</p>
+        </div>
+        <div id="routinesList"></div>
+      </div>
+
+      <div class="list-area hidden" id="routinesFormSection">
+        <div class="card" style="max-width:420px;display:flex;flex-direction:column;gap:14px">
+          <div class="heading" style="font-size:16px">New routine</div>
+          <div>
+            <div class="label-11">Name</div>
+            <input type="text" id="routineNameInput" style="width:100%" placeholder="Market newsletters">
+          </div>
+          <div>
+            <div class="label-11">Senders</div>
+            <div class="chip-row" style="margin-bottom:6px" id="routineSenderChips"></div>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="routineSenderInput" style="flex:1" placeholder="sender@example.com">
+              <button class="btn" id="routineAddSenderBtn" type="button">Add</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:18px;flex-wrap:wrap">
+            <div>
+              <div class="label-11">Older than</div>
+              <select id="routineOlderThanSelect">
+                <option value="7d">7 days</option>
+                <option value="30d">30 days</option>
+                <option value="90d">90 days</option>
+                <option value="180d">180 days</option>
+                <option value="365d">1 year</option>
+              </select>
+            </div>
+            <div>
+              <div class="label-11">Actions</div>
+              <div style="display:flex;gap:12px;font-size:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:4px">
+                  <input type="checkbox" class="routine-action-checkbox" value="delete" style="width:13px;height:13px">Delete
+                </label>
+                <label style="display:flex;align-items:center;gap:4px">
+                  <input type="checkbox" class="routine-action-checkbox" value="archive" style="width:13px;height:13px">Archive
+                </label>
+                <label style="display:flex;align-items:center;gap:4px">
+                  <input type="checkbox" class="routine-action-checkbox" value="mark_read" style="width:13px;height:13px">Mark as read
+                </label>
+                <label style="display:flex;align-items:center;gap:4px">
+                  <input type="checkbox" class="routine-action-checkbox" value="label" style="width:13px;height:13px">Label
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="hidden" id="routineLabelPickerRow">
+            <div class="label-11">Label to apply</div>
+            <select id="routineLabelSelect" style="width:100%"></select>
+          </div>
+          <p class="hidden" id="routineFormError" style="color:var(--danger-text);font-size:12px"></p>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn" id="routineCancelBtn" type="button">Cancel</button>
+            <button class="btn btn-primary" id="routineSaveBtn" type="button">Save routine</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-overlay hidden" id="routineConfirmOverlay">
+        <div class="card" style="width:320px;display:flex;flex-direction:column;gap:10px">
+          <div class="heading" style="font-size:15px" id="routineConfirmTitle"></div>
+          <div style="font-size:12px;color:var(--text-secondary)" id="routineConfirmSummary"></div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary);max-height:160px;overflow-y:auto" id="routineConfirmPerSender"></div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+            <button class="btn" id="routineConfirmCancelBtn" type="button">Cancel</button>
+            <button class="btn btn-danger" id="routineConfirmRunBtn" type="button">Confirm run</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -210,6 +285,7 @@
 <script src="/static/js/archive.js?v={{ cache_bust }}"></script>
 <script src="/static/js/markread.js?v={{ cache_bust }}"></script>
 <script src="/static/js/restore.js?v={{ cache_bust }}"></script>
+<script src="/static/js/routines.js?v={{ cache_bust }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/litepicker@latest/dist/litepicker.js"></script>
 </body>
 </html>
