@@ -236,6 +236,14 @@ class SenderListView {
             checkbox.type = 'checkbox';
             checkbox.className = 'message-cb';
             checkbox.checked = true;
+            // Phase 4c ships the actual per-message inclusion mechanism
+            // (bulk actions accepting an explicit included-message-ID list
+            // per sender); until then, leaving this checkbox interactive
+            // implies unchecking it excludes that message from "Delete
+            // selected"/"Unsubscribe selected"/etc, which isn't true yet -
+            // disable it so the UI doesn't promise something it can't do.
+            checkbox.disabled = true;
+            checkbox.title = 'Per-message selection is coming in a future update - actions currently apply to this sender as a whole';
 
             const subjectSpan = document.createElement('span');
             subjectSpan.className = 'message-subject';

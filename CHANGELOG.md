@@ -144,6 +144,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     what `Auto`/`Open link`/`No unsubscribe link` each mean - this
     explanatory copy existed on the old standalone Unsubscribe view (an
     info-note card) but was dropped when that view merged into Delete
+  - An expanded row's per-message checkboxes were fully interactive but
+    silently ignored by every bulk action (Phase 4c ships the mechanism
+    that actually scopes actions to individually-included messages) -
+    left as-is, this implied unchecking a message would exclude it, which
+    wasn't true yet. Disabled them (matching the eye icon's existing
+    inert treatment) with a tooltip explaining why, so the UI doesn't
+    promise something it can't do yet
 - Restoring a deleted email moved it out of Trash but not back into the
   Inbox (only visible in "All Mail" afterward). Root cause: the delete
   path added the `TRASH` label but never explicitly removed `INBOX`, so

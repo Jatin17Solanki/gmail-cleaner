@@ -334,6 +334,11 @@ body {
   white-space: nowrap;
 }
 
+.message-row .message-cb:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .message-row i {
   color: var(--text-muted);
   font-size: 14px;
