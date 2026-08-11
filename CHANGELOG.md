@@ -181,6 +181,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- Third human manual-testing round on the Phase 4a2 PR, **investigation
+  ongoing, not fully confirmed resolved**: after the timeout fix above, a
+  limit=1000 scan against a ~1800-email inbox completed but only counted
+  837 of the 1000 fetched messages (6 wait cycles totaling ~4 minutes -
+  more cycles than the ~3 the clean quota math predicts). This means some
+  messages are still being silently dropped after exhausting the one retry
+  pass `run_batched_gets` added earlier in this phase. Two real gaps found
+  while investigating (both fixed, but neither confirmed as *the* cause
+  without server-log evidence from a repeat run): (1) `run_batched_gets`
+  had zero logging when a message permanently failed - added
+  `logger.warning()` for both the immediate-non-retryable case and the
+  exhausted-retries case, so the next occurrence is diagnosable instead of
+  a silent number mismatch; (2) `_is_retryable_http_error` only retried
+  429/quota-403 - Gmail's own transient 5xx errors (500/502/503/504,
+  standard "back off and retry" cases per Google's API client guidance)
+  were never retried at all, which is more plausible than sustained 429
+  pressure surviving a retry pass, since `gate()` already self-limits
+  below the 6,000/min cap before every attempt including retries. Broadened
+  the retryable-status set to include them. New test
+  `test_transient_5xx_retries_then_succeeds`. **Follow-up needed**: rerun
+  the same scan and check server console output for the new warning logs
+  to confirm what's actually failing, rather than assuming this closes it
 - Second human manual-testing round on the Phase 4a2 PR: a scan with the
   default limit (1000) went through several "approaching rate limit" wait
   cycles and then failed with "Scan timed out" instead of completing.

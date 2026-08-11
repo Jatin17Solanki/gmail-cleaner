@@ -122,6 +122,22 @@ class TestExecuteWithBackoff:
         sleep_spy.assert_called_once()
         assert "retrying" in status["message"].lower()
 
+    def test_transient_5xx_retries_then_succeeds(self):
+        clock, sleep = _fake_clock_and_sleep()
+        sleep_spy = MagicMock(side_effect=sleep)
+        tracker = QuotaTracker(
+            cap=1000, window_seconds=60, clock=clock, sleep_fn=sleep_spy
+        )
+        request = MagicMock()
+        request.execute.side_effect = [_http_error(503), {"ok": True}]
+        status = {}
+
+        result = tracker.execute_with_backoff(request, cost=10, status_dict=status)
+
+        assert result == {"ok": True}
+        assert request.execute.call_count == 2
+        sleep_spy.assert_called_once()
+
     def test_403_with_non_quota_reason_raises_immediately(self):
         clock, sleep = _fake_clock_and_sleep()
         sleep_spy = MagicMock(side_effect=sleep)

@@ -43,6 +43,10 @@ COST = {
 }
 
 _RETRYABLE_403_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
+# Gmail's own backend can return transient 5xx errors under load, independent
+# of any per-user quota - standard practice (per Google's own API client
+# guidance) is to back off and retry these too, not just 429/quota-403.
+_RETRYABLE_5XX_STATUSES = {500, 502, 503, 504}
 
 
 def _http_error_reason(exc: HttpError) -> str:
@@ -55,7 +59,8 @@ def _http_error_reason(exc: HttpError) -> str:
 
 
 def _is_retryable_http_error(exc: object) -> bool:
-    """True for a 429, or a 403 whose reason is actually a rate/quota limit.
+    """True for a 429, a 403 whose reason is actually a rate/quota limit, or
+    a transient 5xx server error.
 
     A bare 403 can also mean a genuine permission error (e.g. insufficient
     OAuth scope) — those must not be retried.
@@ -67,7 +72,7 @@ def _is_retryable_http_error(exc: object) -> bool:
         return True
     if status == 403:
         return _http_error_reason(exc) in _RETRYABLE_403_REASONS
-    return False
+    return status in _RETRYABLE_5XX_STATUSES
 
 
 class QuotaTracker:
@@ -207,10 +212,16 @@ class QuotaTracker:
             retry_ids: list[str] = []
 
             def batch_callback(request_id, response, exception):
-                if exception is not None and _is_retryable_http_error(exception):
-                    retry_ids.append(request_id)
-                    exceptions_by_id[request_id] = exception
-                    return
+                if exception is not None:
+                    if _is_retryable_http_error(exception):
+                        retry_ids.append(request_id)
+                        exceptions_by_id[request_id] = exception
+                        return
+                    logger.warning(
+                        "Gmail request for message %s failed (non-retryable): %r",
+                        request_id,
+                        exception,
+                    )
                 callback(request_id, response, exception)
 
             for i in range(0, len(pending), batch_size):
@@ -231,7 +242,14 @@ class QuotaTracker:
                 self._sleep(wait)
 
         for msg_id in pending:
-            callback(msg_id, None, exceptions_by_id.get(msg_id))
+            exc = exceptions_by_id.get(msg_id)
+            logger.warning(
+                "Gmail request for message %s still failing after %d retry pass(es): %r",
+                msg_id,
+                max_retry_passes,
+                exc,
+            )
+            callback(msg_id, None, exc)
 
 
 # Gmail's 6,000-units/minute cap is tracked per Google account, not per
