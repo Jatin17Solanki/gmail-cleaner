@@ -42,14 +42,14 @@ def _mock_batch_service(message_ids, responses_by_id):
     class _FakeBatch:
         def __init__(self, callback):
             self._callback = callback
-            self._responses = []
+            self._requests = []
 
-        def add(self, request):
-            self._responses.append(request)
+        def add(self, request, request_id=None):
+            self._requests.append((request_id, request))
 
         def execute(self):
-            for i, response in enumerate(self._responses):
-                self._callback(str(i), response, None)
+            for i, (request_id, response) in enumerate(self._requests):
+                self._callback(request_id or str(i), response, None)
 
     service.new_batch_http_request.side_effect = lambda callback: _FakeBatch(callback)
     return service
@@ -119,9 +119,7 @@ class TestArchiveEmailsQueryScoping:
         service = _mock_service()
         mock_get_service.return_value = (service, None)
 
-        archive_emails_background(
-            ["newsletter@example.com"], {"older_than": "180d"}
-        )
+        archive_emails_background(["newsletter@example.com"], {"older_than": "180d"})
 
         list_call = service.users.return_value.messages.return_value.list
         query = list_call.call_args.kwargs["q"]

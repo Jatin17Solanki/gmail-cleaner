@@ -139,6 +139,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     existing `data/` ignore rule doesn't cover - added explicit entries
     for both before opening this PR, per CLAUDE.md's requirement to
     re-check `.gitignore` on any auth-touching change.
+- Phase 4a2 (inserted before Phase 4b, per PRD Section 7): Gmail API quota
+  awareness. A default-sized scan (`limit=1000`) fetches per-message
+  metadata via `messages().get()` for every result - ~20,000 quota units in
+  a few seconds against Gmail's 6,000-units/minute/user cap, with zero
+  retry/backoff anywhere in the codebase. When Gmail started rate-limiting
+  a batch mid-scan, the affected messages were silently dropped
+  (`if exception: return`), producing incomplete, non-deterministic sender
+  counts with no indication anything went wrong.
+  - New `app/services/gmail/quota.py`: `QuotaTracker` tracks a rolling
+    60-second usage window (its own `threading.Lock`, since
+    `app.core.state` has no locking for a counter multiple background
+    tasks can hit concurrently). `gate()` proactively blocks before a call
+    would exceed the cap, surfacing a live "waiting Ns" message through
+    the same `status_dict["message"]` channel every scan already polls,
+    and logs a one-time warning past 50% usage (bug-detection aid, not a
+    UI counter, per PRD). `execute_with_backoff()` retries a single
+    `.execute()` call on a real 429 or quota-shaped 403 with exponential
+    backoff - first place in the repo importing
+    `googleapiclient.errors.HttpError`. `run_batched_gets()` replaces the
+    batch-of-`messages().get()` loop duplicated across the delete/archive/
+    mark-read scans and the CSV download - a sub-request that fails with a
+    429/quota-403 is now retried once (via `request_id`-tagged
+    `batch.add()`) instead of being dropped.
+  - Wired into all Gmail API call sites across `app/services/gmail/*.py`
+    and `auth.py`'s four `getProfile()` calls (function-local imports
+    there, to avoid a circular import with `app.services.gmail`'s package
+    `__init__.py`, which imports from `auth.py`). Removed the flat,
+    non-adaptive `time.sleep()` "rate limiting" placeholders real gating
+    now replaces.
+  - Cost table follows PRD Section 7's own figures where given
+    (`messages.list`=5, `messages.get`=20, `messages.batchModify`=50,
+    flat); `getProfile`/`labels.*` costs are a documented assumption
+    since the PRD doesn't price them and they're cheap/rare, not the
+    source of exhaustion.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases
@@ -277,17 +311,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now show as a toast instead of a blocking `alert()`
 
 ### Known issue (documented, not fixed in this round)
-- Scanning with a large limit (e.g. 5000) can return different results on
-  repeated runs with identical filters. Root cause: Gmail API quota
-  exhaustion - `messages.get()` costs 20 quota units and a 5000-email scan
-  can issue up to 100,000 units of calls against a 6,000/minute/user limit,
-  with no retry/backoff anywhere in the codebase, so which specific
-  requests get rate-limited (and silently dropped from the count) varies
-  run to run. Fixing this properly means building the quota-awareness
-  system already specified in the PRD (Section 7): a rolling 60s usage
-  counter, proactive blocking before exceeding the limit, and reactive
-  429 backoff. Deferred as its own piece of work rather than folded into
-  this phase
+- **RESOLVED by Phase 4a2** (pending that phase's PR merge - see `### Added`
+  above). Scanning with a large limit (e.g. 5000) could return different
+  results on repeated runs with identical filters, due to Gmail API quota
+  exhaustion with no retry/backoff anywhere in the codebase. Kept here for
+  history/context.
 - **Distinct from the above, found during Phase 4a's PR review**: scan
   undercounting/non-determinism also happens on very small scans, where
   quota exhaustion can't be the cause. A sender with 2 real messages

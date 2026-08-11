@@ -9,6 +9,7 @@ from typing import Optional
 from app.core import state
 from app.services import operation_log
 from app.services.auth import get_gmail_service
+from app.services.gmail import quota
 from app.services.gmail.helpers import build_gmail_query
 
 
@@ -19,7 +20,9 @@ def get_labels() -> dict:
         return {"success": False, "labels": [], "error": error}
 
     try:
-        results = service.users().labels().list(userId="me").execute()
+        results = quota.execute_with_backoff(
+            service.users().labels().list(userId="me"), quota.COST["labels.list"]
+        )
         labels = results.get("labels", [])
 
         # Categorize labels
@@ -67,7 +70,10 @@ def create_label(name: str) -> dict:
             "messageListVisibility": "show",
         }
 
-        result = service.users().labels().create(userId="me", body=label_body).execute()
+        result = quota.execute_with_backoff(
+            service.users().labels().create(userId="me", body=label_body),
+            quota.COST["labels.create"],
+        )
 
         return {
             "success": True,
@@ -99,7 +105,10 @@ def delete_label(label_id: str) -> dict:
         return {"success": False, "error": error}
 
     try:
-        service.users().labels().delete(userId="me", id=label_id).execute()
+        quota.execute_with_backoff(
+            service.users().labels().delete(userId="me", id=label_id),
+            quota.COST["labels.delete"],
+        )
         return {"success": True, "error": None}
     except Exception as e:
         error_msg = str(e)
@@ -171,8 +180,10 @@ def _apply_label_operation_background(
     # Fetch it once before processing senders
     if not add_label:
         try:
-            label_info = (
-                service.users().labels().get(userId="me", id=label_id).execute()
+            label_info = quota.execute_with_backoff(
+                service.users().labels().get(userId="me", id=label_id),
+                quota.COST["labels.get"],
+                state.label_operation_status,
             )
             label_name = label_info.get("name", "")
             if not label_name:
@@ -187,8 +198,10 @@ def _apply_label_operation_background(
         # Not required for the query, but fetched best-effort so the
         # operation log can show a readable name instead of a bare ID.
         try:
-            label_info = (
-                service.users().labels().get(userId="me", id=label_id).execute()
+            label_info = quota.execute_with_backoff(
+                service.users().labels().get(userId="me", id=label_id),
+                quota.COST["labels.get"],
+                state.label_operation_status,
             )
             label_name = label_info.get("name", "")
         except Exception:
@@ -210,16 +223,15 @@ def _apply_label_operation_background(
                 query_filters["label"] = label_name
             query = build_gmail_query(query_filters)
 
-            results = (
-                service.users()
-                .messages()
-                .list(userId="me", q=query, maxResults=500)
-                .execute()
+            results = quota.execute_with_backoff(
+                service.users().messages().list(userId="me", q=query, maxResults=500),
+                quota.COST["messages.list"],
+                state.label_operation_status,
             )
             messages = results.get("messages", [])
 
             while "nextPageToken" in results:
-                results = (
+                results = quota.execute_with_backoff(
                     service.users()
                     .messages()
                     .list(
@@ -227,8 +239,9 @@ def _apply_label_operation_background(
                         q=query,
                         maxResults=500,
                         pageToken=results["nextPageToken"],
-                    )
-                    .execute()
+                    ),
+                    quota.COST["messages.list"],
+                    state.label_operation_status,
                 )
                 messages.extend(results.get("messages", []))
 
@@ -262,7 +275,11 @@ def _apply_label_operation_background(
         for i in range(0, total_emails, batch_size):
             batch = all_message_ids[i : i + batch_size]
             body = {**body_template, "ids": batch}
-            service.users().messages().batchModify(userId="me", body=body).execute()
+            quota.execute_with_backoff(
+                service.users().messages().batchModify(userId="me", body=body),
+                quota.COST["messages.batchModify"],
+                state.label_operation_status,
+            )
             affected += len(batch)
             affected_ids.extend(batch)
             state.label_operation_status["affected_count"] = affected

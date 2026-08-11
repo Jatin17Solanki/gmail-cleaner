@@ -4,13 +4,13 @@ Gmail Archive Operations
 Functions for scanning and archiving emails (removing from inbox).
 """
 
-import time
 from collections import defaultdict
 from typing import Optional
 
 from app.core import state
 from app.services import operation_log
 from app.services.auth import get_gmail_service
+from app.services.gmail import quota
 from app.services.gmail.helpers import build_gmail_query, get_sender_info, get_subject
 
 # Phase 3: Archive gets its own tab/scan (previously it only operated on
@@ -43,17 +43,18 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
 
         query = build_gmail_query(filters)
 
-        results = (
+        results = quota.execute_with_backoff(
             service.users()
             .messages()
-            .list(userId="me", maxResults=min(limit, 500), q=query or None)
-            .execute()
+            .list(userId="me", maxResults=min(limit, 500), q=query or None),
+            quota.COST["messages.list"],
+            state.archive_scan_status,
         )
 
         messages = results.get("messages", [])
 
         while "nextPageToken" in results and len(messages) < limit:
-            results = (
+            results = quota.execute_with_backoff(
                 service.users()
                 .messages()
                 .list(
@@ -61,8 +62,9 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
                     maxResults=min(limit - len(messages), 500),
                     pageToken=results["nextPageToken"],
                     q=query or None,
-                )
-                .execute()
+                ),
+                quota.COST["messages.list"],
+                state.archive_scan_status,
             )
             messages.extend(results.get("messages", []))
 
@@ -94,6 +96,8 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
         def process_message(request_id, response, exception) -> None:
             nonlocal processed
             processed += 1
+            state.archive_scan_status["progress"] = int(processed / total * 100)
+            state.archive_scan_status["message"] = f"Scanned {processed}/{total} emails"
 
             if exception:
                 return
@@ -116,7 +120,10 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
                 sender_counts[sender_email]["email"] = sender_email
                 sender_counts[sender_email]["message_ids"].append(msg_id)
                 sender_counts[sender_email]["total_size"] += size_estimate
-                if len(sender_counts[sender_email]["subjects"]) < SUBJECTS_PER_SENDER_CAP:
+                if (
+                    len(sender_counts[sender_email]["subjects"])
+                    < SUBJECTS_PER_SENDER_CAP
+                ):
                     sender_counts[sender_email]["subjects"].append(subject)
 
                 if email_date:
@@ -124,30 +131,27 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
                         sender_counts[sender_email]["first_date"] = email_date
                     sender_counts[sender_email]["last_date"] = email_date
 
-        for i in range(0, len(messages), batch_size):
-            batch_ids = messages[i : i + batch_size]
-            batch = service.new_batch_http_request(callback=process_message)
-
-            for msg_data in batch_ids:
-                batch.add(
-                    service.users()
-                    .messages()
-                    .get(
-                        userId="me",
-                        id=msg_data["id"],
-                        format="metadata",
-                        metadataHeaders=["From", "Subject", "Date"],
-                    )
+        def build_get_request(msg_id: str):
+            return (
+                service.users()
+                .messages()
+                .get(
+                    userId="me",
+                    id=msg_id,
+                    format="metadata",
+                    metadataHeaders=["From", "Subject", "Date"],
                 )
+            )
 
-            batch.execute()
-
-            progress = int((i + len(batch_ids)) / total * 100)
-            state.archive_scan_status["progress"] = progress
-            state.archive_scan_status["message"] = f"Scanned {processed}/{total} emails"
-
-            if (i // batch_size + 1) % 5 == 0:
-                time.sleep(0.3)
+        quota.run_batched_gets(
+            service,
+            [msg_data["id"] for msg_data in messages],
+            build_get_request,
+            process_message,
+            quota.COST["messages.get"],
+            state.archive_scan_status,
+            batch_size=batch_size,
+        )
 
         sorted_senders = sorted(
             [{"email": k, **v} for k, v in sender_counts.items()],
@@ -219,11 +223,12 @@ def archive_emails_background(senders: list[str], filters: Optional[dict] = None
             page_token = None
 
             while True:
-                result = (
+                result = quota.execute_with_backoff(
                     service.users()
                     .messages()
-                    .list(userId="me", q=query, maxResults=500, pageToken=page_token)
-                    .execute()
+                    .list(userId="me", q=query, maxResults=500, pageToken=page_token),
+                    quota.COST["messages.list"],
+                    state.archive_status,
                 )
 
                 messages = result.get("messages", [])
@@ -239,15 +244,18 @@ def archive_emails_background(senders: list[str], filters: Optional[dict] = None
             # Archive in batches (remove INBOX label)
             for j in range(0, len(message_ids), 100):
                 batch_ids = message_ids[j : j + 100]
-                service.users().messages().batchModify(
-                    userId="me", body={"ids": batch_ids, "removeLabelIds": ["INBOX"]}
-                ).execute()
+                quota.execute_with_backoff(
+                    service.users()
+                    .messages()
+                    .batchModify(
+                        userId="me",
+                        body={"ids": batch_ids, "removeLabelIds": ["INBOX"]},
+                    ),
+                    quota.COST["messages.batchModify"],
+                    state.archive_status,
+                )
                 total_archived += len(batch_ids)
                 archived_ids.extend(batch_ids)
-
-                # Throttle every 500 emails (check at 100, 600, 1100, etc.)
-                if (j + 100) % 500 == 0:
-                    time.sleep(0.5)
 
         state.archive_status["progress"] = 100
         state.archive_status["done"] = True

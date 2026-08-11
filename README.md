@@ -83,6 +83,7 @@ Lets make this tool a better one by improving as much as possible, All features 
 | Inbox-scoped by default | Category filter defaults to "All mail" today, which can pull in archived mail unexpectedly and inflate counts — default changes to Inbox-only | Done |
 | Label operations respect filters | The Label feature has the same filter-ignoring issue as Delete — same fix applied | Done |
 | Login gate | No authentication currently exists on any action endpoint — adds a single shared-password login screen protecting the whole app | Done |
+| Gmail API quota awareness | Scans/bulk actions could silently exceed Gmail's per-user quota with no retry/backoff, causing rate-limited messages to be dropped from results with no warning (non-deterministic sender counts) — adds a rolling usage tracker, proactive blocking with a live wait message, and reactive 429/403 backoff | Done |
 
 ### Restore-from-Trash
 
