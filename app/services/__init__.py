@@ -12,15 +12,13 @@ from .auth import (
 from .gmail import (
     # Filters
     build_gmail_query,
-    # Scanning
-    scan_emails,
-    get_scan_status,
-    get_scan_results,
     # Unsubscribe
     unsubscribe_single,
     # Mark as read
-    get_unread_count,
-    mark_emails_as_read,
+    scan_senders_for_markread,
+    get_markread_scan_status,
+    get_markread_scan_results,
+    mark_emails_as_read_bulk_background,
     get_mark_read_status,
     # Delete
     scan_senders_for_delete,
@@ -42,6 +40,9 @@ from .gmail import (
     remove_label_from_senders_background,
     get_label_operation_status,
     # Archive
+    scan_senders_for_archive,
+    get_archive_scan_status,
+    get_archive_scan_results,
     archive_emails_background,
     get_archive_status,
     # Mark Important

@@ -66,6 +66,34 @@ class TestBuildGmailQuery:
         filters = {"category": "promotions"}
         assert build_gmail_query(filters) == "category:promotions"
 
+    def test_unread_only_filter(self):
+        """unread_only filter should add is:unread, still Inbox-scoped by default (#99)."""
+        filters = {"unread_only": True}
+        assert build_gmail_query(filters) == "label:INBOX is:unread"
+
+    def test_unread_only_falsy_omitted(self):
+        """Falsy unread_only should not add is:unread."""
+        filters = {"unread_only": False}
+        assert build_gmail_query(filters) == "label:INBOX"
+
+    def test_has_attachment_filter(self):
+        """has_attachment filter should add has:attachment, still Inbox-scoped by default (#99)."""
+        filters = {"has_attachment": True}
+        assert build_gmail_query(filters) == "label:INBOX has:attachment"
+
+    def test_has_attachment_falsy_omitted(self):
+        """Falsy has_attachment should not add has:attachment."""
+        filters = {"has_attachment": False}
+        assert build_gmail_query(filters) == "label:INBOX"
+
+    def test_unread_only_and_has_attachment_combined(self):
+        """Both new filters can combine with existing ones."""
+        filters = {"category": "promotions", "unread_only": True, "has_attachment": True}
+        query = build_gmail_query(filters)
+        assert "category:promotions" in query
+        assert "is:unread" in query
+        assert "has:attachment" in query
+
 
 class TestGetUnsubscribeFromHeaders:
     """Tests for _get_unsubscribe_from_headers function."""

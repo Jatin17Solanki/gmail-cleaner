@@ -24,6 +24,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the PRD), and the Restore screen uses the app's existing CSS rather
   than the wireframes' `design-system.css`, since adopting that system
   app-wide is Phase 3's job
+- Phase 3: full UI/UX redesign onto the warm, minimal `design-system.css`
+  used by the wireframes, and the target information architecture (PRD
+  Section 5) - sidebar tabs Delete / Mark as read / Archive / Routines /
+  Restore, a per-view slide-over filter drawer replacing the old single
+  shared filter bar, and Label/Important as per-row inline icon actions on
+  every sender row (Delete, Mark as read, and Archive alike) instead of a
+  bulk multi-select "Organize" button group gated to the Delete tab. This
+  was a real interaction rebuild, not a reskin:
+  - **Unsubscribe is no longer its own tab.** It's merged into Delete: one
+    scan (`scan_senders_for_delete`) now also detects each sender's
+    unsubscribe link/type (widening its batch-request headers to include
+    `List-Unsubscribe`/`List-Unsubscribe-Post`, same detection
+    `get_unsubscribe_from_headers` already provided), surfaced as a status
+    badge (`Auto`/`Open link`/`No unsubscribe link`) and an independent
+    "Unsub" toggle per row, with "Unsubscribe selected" and "Delete
+    selected" as two independent bottom-bar actions. The old standalone
+    `scan_emails()`/`/api/scan`/`/api/results`/`scanner.js` are removed.
+  - **Archive gets its own scan.** Previously `archive_emails_background`
+    only ever operated on whatever senders the Delete tab had already
+    scanned, using a bare `f"from:{sender} in:inbox"` query with no
+    filters param at all - the #107/#104 gap CLAUDE.md's conventions call
+    out, just never hit because Archive had no filter UI before now. New
+    `scan_senders_for_archive()` mirrors `scan_senders_for_delete`, and
+    `archive_emails_background` now takes an optional `filters` param
+    routed through `build_gmail_query()`.
+  - **Mark as read gets a real sender-row list.** Replaces the old
+    aggregate unread-count card and blind "mark N most recent unread"
+    picker with its own scan (`scan_senders_for_markread`, always scoped
+    to `is:unread`) and a senders-scoped bulk action
+    (`mark_emails_as_read_bulk_background`), matching Delete/Archive's
+    shape. The old count-based `mark_emails_as_read`/`get_unread_count`
+    and `/api/mark-read`/`/api/unread-count` are removed.
+  - **Important also gets #107-scoped.** `mark_important_background` used
+    a bare `f"from:{sender}"` query with no filters and no Inbox default
+    at all (marking important could silently reach Trash/Spam/Archived
+    mail from that sender) - now routed through `build_gmail_query()`
+    like every other operation, with an optional `filters` param.
+  - Two new filter keys resolve #99: `unread_only` (`is:unread`) and
+    `has_attachment` (`has:attachment`), available in every view's drawer.
+  - New `unsubscribe_link`/`unsubscribe_type` fields on delete-scan sender
+    rows; the per-sender subject-preview cap widens from 3 to ~20 (no
+    extra Gmail API calls - the batch metadata request already fetches
+    these headers) to back the new expanded-row message list.
+  - **Expand/collapse ships as a shell, not the full Phase 4c mechanism.**
+    Per PRD Section 6 ("implement together if practical"), each row's
+    chevron reveals real per-message subjects and a working copy-to-
+    clipboard icon, but the eye ("view full email") icon is inert and
+    bulk actions still operate on whole senders, not individual unchecked
+    messages - Phase 4c adds the full-body-fetch endpoint and the
+    message-ID-scoped bulk-action rework. Documented in `PROGRESS.md` so
+    Phase 4c's remaining scope is explicit.
+  - Old `base.css`/`layout.css`/`filters.css`/`components.css`/
+    `responsive.css` are removed in favor of `design-system.css` (already
+    used by `login.html`) plus a new `static/css/app.css` for what the
+    wireframes don't define as reusable classes (the drawer, message
+    sub-rows, the inline label-apply toolbar, toasts, responsive
+    breakpoints). New `static/js/senderList.js` implements the shared
+    sender-row-list shell (scan, render, expand/collapse, filter drawer,
+    selection) once, used by rewritten `delete.js`/`markread.js` and new
+    `archive.js`, instead of tripling near-identical code.
+  - Routines appears as a real, always-visible sidebar item (present on
+    every wireframe screen) showing a "coming in a future phase"
+    placeholder view - Phase 4b builds the real thing.
+  - Download's placement (PRD Section 10, previously unresolved) landed
+    as a bulk icon button in the Delete view's bottom actions bar - the
+    closest existing behavior, since it already operated on a multi-
+    sender selection.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases
@@ -32,6 +99,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- Phase 3 manual testing against a real inbox (not synthetic data - just
+  browsing, no destructive actions taken) surfaced a subject line
+  containing literal `"` characters (e.g. `"the doom of ai has started"`)
+  breaking out of the expanded-row message list's `data-subject` HTML
+  attribute, since `escapeHtml()` only escapes what's safe for a text
+  node (`<`/`>`/`&`), not attribute-value context (which also needs
+  quotes escaped). Fixed by building message rows via `createElement`/
+  `textContent`/property assignment throughout (`senderList.js`) instead
+  of string-templating sender-controlled subject text into HTML, which
+  removes the whole class of attribute-escaping bugs rather than just
+  this instance
 - Restoring a deleted email moved it out of Trash but not back into the
   Inbox (only visible in "All Mail" afterward). Root cause: the delete
   path added the `TRASH` label but never explicitly removed `INBOX`, so

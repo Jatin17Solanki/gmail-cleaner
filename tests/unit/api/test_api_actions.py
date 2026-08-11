@@ -9,27 +9,25 @@ from unittest.mock import patch
 # client fixture is provided by conftest.py
 
 
-class TestScanEndpoint:
-    """Tests for POST /api/scan endpoint."""
+class TestArchiveScanEndpoint:
+    """Tests for POST /api/archive-scan endpoint (Phase 3 - Archive gets
+    its own scan, mirroring delete-scan)."""
 
     def test_scan_with_default_params(self, client):
-        """POST /api/scan with default params should start scan."""
-        response = client.post("/api/scan", json={})
+        response = client.post("/api/archive-scan", json={})
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "started"
 
     def test_scan_with_custom_limit(self, client):
-        """POST /api/scan with custom limit should accept it."""
-        response = client.post("/api/scan", json={"limit": 100})
+        response = client.post("/api/archive-scan", json={"limit": 100})
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "started"
 
     def test_scan_with_filters(self, client):
-        """POST /api/scan with filters should accept them."""
         response = client.post(
-            "/api/scan",
+            "/api/archive-scan",
             json={
                 "limit": 500,
                 "filters": {
@@ -44,13 +42,37 @@ class TestScanEndpoint:
         assert data["status"] == "started"
 
     def test_scan_with_invalid_limit(self, client):
-        """POST /api/scan with invalid limit should fail validation."""
-        response = client.post("/api/scan", json={"limit": 0})
+        response = client.post("/api/archive-scan", json={"limit": 0})
         assert response.status_code == 422  # Validation error
 
     def test_scan_with_invalid_filters(self, client):
-        """POST /api/scan with invalid filters should fail validation."""
-        response = client.post("/api/scan", json={"filters": {"older_than": "invalid"}})
+        response = client.post(
+            "/api/archive-scan", json={"filters": {"older_than": "invalid"}}
+        )
+        assert response.status_code == 422  # Validation error
+
+
+class TestMarkreadScanEndpoint:
+    """Tests for POST /api/markread-scan endpoint (Phase 3 - Mark-as-read
+    gets its own sender-row-list scan, mirroring delete-scan)."""
+
+    def test_scan_with_default_params(self, client):
+        response = client.post("/api/markread-scan", json={})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "started"
+
+    def test_scan_with_filters(self, client):
+        response = client.post(
+            "/api/markread-scan",
+            json={"limit": 500, "filters": {"category": "promotions"}},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "started"
+
+    def test_scan_with_invalid_limit(self, client):
+        response = client.post("/api/markread-scan", json={"limit": 0})
         assert response.status_code == 422  # Validation error
 
 
@@ -115,35 +137,38 @@ class TestUnsubscribeEndpoint:
             assert response.status_code == 200
 
 
-class TestMarkReadEndpoint:
-    """Tests for POST /api/mark-read endpoint."""
+class TestMarkReadBulkEndpoint:
+    """Tests for POST /api/mark-read-bulk endpoint (Phase 3 - replaces the
+    old blind count-based /api/mark-read with a senders-scoped bulk action,
+    matching Delete/Archive's sender-row-list pattern)."""
 
-    def test_mark_read_with_default_params(self, client):
-        """POST /api/mark-read with default params should start."""
-        response = client.post("/api/mark-read", json={})
+    def test_mark_read_bulk_with_default_params(self, client):
+        """POST /api/mark-read-bulk with default params should start."""
+        response = client.post("/api/mark-read-bulk", json={})
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "started"
 
-    def test_mark_read_with_custom_count(self, client):
-        """POST /api/mark-read with custom count should accept it."""
-        response = client.post("/api/mark-read", json={"count": 500})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "started"
-
-    def test_mark_read_with_filters(self, client):
-        """POST /api/mark-read with filters should accept them."""
+    def test_mark_read_bulk_with_senders(self, client):
+        """POST /api/mark-read-bulk with senders should accept them."""
         response = client.post(
-            "/api/mark-read",
-            json={"count": 1000, "filters": {"category": "promotions"}},
+            "/api/mark-read-bulk",
+            json={"senders": ["newsletter@example.com", "digest@example.com"]},
         )
         assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "started"
 
-    def test_mark_read_exceeds_max_count(self, client):
-        """POST /api/mark-read with count > 100000 should fail."""
-        response = client.post("/api/mark-read", json={"count": 100001})
-        assert response.status_code == 422
+    def test_mark_read_bulk_with_filters(self, client):
+        """POST /api/mark-read-bulk with filters should accept them."""
+        response = client.post(
+            "/api/mark-read-bulk",
+            json={
+                "senders": ["newsletter@example.com"],
+                "filters": {"category": "promotions"},
+            },
+        )
+        assert response.status_code == 200
 
 
 class TestDeleteScanEndpoint:
@@ -227,14 +252,14 @@ class TestRequestValidation:
     """Tests for request validation across endpoints."""
 
     def test_scan_missing_body(self, client):
-        """POST /api/scan without body should use defaults."""
-        response = client.post("/api/scan", json={})
+        """POST /api/delete-scan without body should use defaults."""
+        response = client.post("/api/delete-scan", json={})
         assert response.status_code == 200
 
     def test_invalid_json(self, client):
         """POST with invalid JSON should return 422."""
         response = client.post(
-            "/api/scan",
+            "/api/delete-scan",
             content="not valid json",
             headers={"Content-Type": "application/json"},
         )
@@ -243,11 +268,13 @@ class TestRequestValidation:
     def test_invalid_filter_category(self, client):
         """Invalid category filter should fail validation."""
         response = client.post(
-            "/api/scan", json={"filters": {"category": "invalid_category"}}
+            "/api/delete-scan", json={"filters": {"category": "invalid_category"}}
         )
         assert response.status_code == 422
 
     def test_invalid_older_than_format(self, client):
         """Invalid older_than format should fail validation."""
-        response = client.post("/api/scan", json={"filters": {"older_than": "30days"}})
+        response = client.post(
+            "/api/delete-scan", json={"filters": {"older_than": "30days"}}
+        )
         assert response.status_code == 422

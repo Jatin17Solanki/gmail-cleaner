@@ -51,11 +51,8 @@ GmailCleaner.Restore = {
                     <div class="restore-item-title">${GmailCleaner.UI.escapeHtml(this.describe(entry))}</div>
                     <div class="restore-item-sub">${GmailCleaner.UI.escapeHtml(this.describeSource(entry))}</div>
                 </div>
-                <button class="btn btn-secondary" data-entry-id="${entry.id}">
-                    <svg viewBox="0 0 24 24" width="16" height="16">
-                        <path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
-                    </svg>
-                    Restore
+                <button class="btn" data-entry-id="${entry.id}">
+                    <i class="ti ti-rotate"></i>Restore
                 </button>
             `;
             li.querySelector('button').addEventListener('click', () => this.restoreEntry(entry.id));

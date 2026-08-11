@@ -100,6 +100,9 @@ def build_gmail_query(filters: Optional[Union[dict, Any]] = None) -> str:
             - larger_than: '1M', '5M', '10M', '25M' or empty
             - category: 'promotions', 'social', 'updates', 'forums', 'primary' or empty
             - sender: 'email@domain.com' or 'domain.com' to filter by sender
+            - label: Gmail label name or ID to filter by
+            - unread_only: truthy to restrict to unread mail
+            - has_attachment: truthy to restrict to mail with attachments
 
     Returns:
         Gmail query string. Scoped to `label:INBOX` when no explicit category
@@ -139,6 +142,12 @@ def build_gmail_query(filters: Optional[Union[dict, Any]] = None) -> str:
 
     if label := filters.get("label", ""):
         query_parts.append(f"label:{label}")
+
+    if filters.get("unread_only"):
+        query_parts.append("is:unread")
+
+    if filters.get("has_attachment"):
+        query_parts.append("has:attachment")
 
     return " ".join(query_parts)
 

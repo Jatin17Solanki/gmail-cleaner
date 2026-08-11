@@ -13,7 +13,19 @@ from typing import Optional
 from app.core import state
 from app.services import operation_log
 from app.services.auth import get_gmail_service
-from app.services.gmail.helpers import build_gmail_query, get_sender_info, get_subject
+from app.services.gmail.helpers import (
+    build_gmail_query,
+    get_sender_info,
+    get_subject,
+    get_unsubscribe_from_headers,
+)
+
+# Phase 3: Unsubscribe is a per-row action on the merged Delete view, not
+# its own tab — cap how many subject lines we keep per sender for the
+# expanded-row shell (message-level detail is capped at ~20 per PRD
+# Section 6 Phase 4c; costs nothing extra since headers are already
+# fetched in the same batch metadata call).
+SUBJECTS_PER_SENDER_CAP = 20
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +98,8 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
                 "last_date": None,
                 "message_ids": [],
                 "total_size": 0,
+                "unsubscribe_link": None,
+                "unsubscribe_type": None,
             }
         )
         processed = 0
@@ -103,6 +117,7 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
             subject = get_subject(headers)
             msg_id = response.get("id", "")
             size_estimate = response.get("sizeEstimate", 0)
+            unsub_link, unsub_type = get_unsubscribe_from_headers(headers)
 
             # Extract date from headers
             email_date = None
@@ -117,8 +132,11 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
                 sender_counts[sender_email]["email"] = sender_email
                 sender_counts[sender_email]["message_ids"].append(msg_id)
                 sender_counts[sender_email]["total_size"] += size_estimate
-                if len(sender_counts[sender_email]["subjects"]) < 3:
+                if len(sender_counts[sender_email]["subjects"]) < SUBJECTS_PER_SENDER_CAP:
                     sender_counts[sender_email]["subjects"].append(subject)
+                if unsub_link:
+                    sender_counts[sender_email]["unsubscribe_link"] = unsub_link
+                    sender_counts[sender_email]["unsubscribe_type"] = unsub_type
 
                 # Track first and last dates
                 if email_date:
@@ -139,7 +157,13 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
                         userId="me",
                         id=msg_data["id"],
                         format="metadata",
-                        metadataHeaders=["From", "Subject", "Date"],
+                        metadataHeaders=[
+                            "From",
+                            "Subject",
+                            "Date",
+                            "List-Unsubscribe",
+                            "List-Unsubscribe-Post",
+                        ],
                     )
                 )
 

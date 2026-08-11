@@ -9,11 +9,13 @@ from pydantic import ValidationError
 
 from app.models.schemas import (
     FiltersModel,
-    ScanRequest,
-    MarkReadRequest,
     DeleteBulkRequest,
     UnsubscribeRequest,
     DeleteEmailsRequest,
+    ArchiveScanRequest,
+    MarkReadScanRequest,
+    MarkReadBulkRequest,
+    ArchiveRequest,
 )
 
 
@@ -122,67 +124,17 @@ class TestFiltersModel:
         assert filters.larger_than == "5M"
         assert filters.category == "promotions"
 
+    def test_unread_only_and_has_attachment_default_none(self):
+        """New (#99) filters should default to None, not enabled."""
+        filters = FiltersModel()
+        assert filters.unread_only is None
+        assert filters.has_attachment is None
 
-class TestScanRequest:
-    """Tests for ScanRequest model."""
-
-    def test_default_values(self):
-        """Default values should be set correctly."""
-        request = ScanRequest()
-        assert request.limit == 500
-        assert request.filters is None
-
-    def test_valid_limit_range(self):
-        """Limit within valid range should pass."""
-        request = ScanRequest(limit=1000)
-        assert request.limit == 1000
-
-    def test_limit_minimum(self):
-        """Minimum limit should be 1."""
-        request = ScanRequest(limit=1)
-        assert request.limit == 1
-
-    def test_limit_maximum(self):
-        """Maximum limit should be 5000."""
-        request = ScanRequest(limit=5000)
-        assert request.limit == 5000
-
-    def test_limit_below_minimum(self):
-        """Limit below 1 should fail."""
-        with pytest.raises(ValidationError):
-            ScanRequest(limit=0)
-
-    def test_limit_above_maximum(self):
-        """Limit above 5000 should fail."""
-        with pytest.raises(ValidationError):
-            ScanRequest(limit=5001)
-
-    def test_with_filters(self):
-        """Request with filters should work."""
-        filters = FiltersModel(older_than="30d")
-        request = ScanRequest(limit=100, filters=filters)
-        assert request.limit == 100
-        assert request.filters.older_than == "30d"
-
-
-class TestMarkReadRequest:
-    """Tests for MarkReadRequest model."""
-
-    def test_default_values(self):
-        """Default values should be set correctly."""
-        request = MarkReadRequest()
-        assert request.count == 100
-        assert request.filters is None
-
-    def test_count_maximum(self):
-        """Maximum count should be 100000."""
-        request = MarkReadRequest(count=100000)
-        assert request.count == 100000
-
-    def test_count_above_maximum(self):
-        """Count above 100000 should fail."""
-        with pytest.raises(ValidationError):
-            MarkReadRequest(count=100001)
+    def test_unread_only_and_has_attachment_accept_booleans(self):
+        """New (#99) filters should accept explicit booleans."""
+        filters = FiltersModel(unread_only=True, has_attachment=False)
+        assert filters.unread_only is True
+        assert filters.has_attachment is False
 
 
 class TestDeleteBulkRequest:
@@ -242,3 +194,84 @@ class TestDeleteEmailsRequest:
         """Should accept sender email."""
         request = DeleteEmailsRequest(sender="newsletter@example.com")
         assert request.sender == "newsletter@example.com"
+
+
+class TestArchiveScanRequest:
+    """Tests for ArchiveScanRequest model (Phase 3 — Archive's own scan)."""
+
+    def test_default_values(self):
+        """Default values should be set correctly."""
+        request = ArchiveScanRequest()
+        assert request.limit == 1000
+        assert request.filters is None
+
+    def test_limit_below_minimum(self):
+        """Limit below 1 should fail."""
+        with pytest.raises(ValidationError):
+            ArchiveScanRequest(limit=0)
+
+    def test_limit_above_maximum(self):
+        """Limit above 10000 should fail."""
+        with pytest.raises(ValidationError):
+            ArchiveScanRequest(limit=10001)
+
+    def test_with_filters(self):
+        """Request with filters should work."""
+        filters = FiltersModel(older_than="180d")
+        request = ArchiveScanRequest(limit=500, filters=filters)
+        assert request.limit == 500
+        assert request.filters.older_than == "180d"
+
+
+class TestMarkReadScanRequest:
+    """Tests for MarkReadScanRequest model (Phase 3 — Mark-as-read's own scan)."""
+
+    def test_default_values(self):
+        """Default values should be set correctly."""
+        request = MarkReadScanRequest()
+        assert request.limit == 1000
+        assert request.filters is None
+
+    def test_limit_below_minimum(self):
+        """Limit below 1 should fail."""
+        with pytest.raises(ValidationError):
+            MarkReadScanRequest(limit=0)
+
+    def test_with_filters(self):
+        """Request with filters should work."""
+        filters = FiltersModel(unread_only=True)
+        request = MarkReadScanRequest(filters=filters)
+        assert request.filters.unread_only is True
+
+
+class TestMarkReadBulkRequest:
+    """Tests for MarkReadBulkRequest model (Phase 3 — senders-scoped mark-read)."""
+
+    def test_empty_senders(self):
+        """Empty senders list should be valid."""
+        request = MarkReadBulkRequest()
+        assert request.senders == []
+        assert request.filters is None
+
+    def test_with_senders_and_filters(self):
+        """Should accept senders and filters together."""
+        senders = ["newsletter@example.com", "digest@example.com"]
+        filters = FiltersModel(category="promotions")
+        request = MarkReadBulkRequest(senders=senders, filters=filters)
+        assert request.senders == senders
+        assert request.filters.category == "promotions"
+
+
+class TestArchiveRequestFilters:
+    """Tests for ArchiveRequest's Phase 3 filters field."""
+
+    def test_default_filters_none(self):
+        """Filters should default to None (archive whole sender, unscoped)."""
+        request = ArchiveRequest(senders=["a@example.com"])
+        assert request.filters is None
+
+    def test_with_filters(self):
+        """Should accept filters to scope the archive to the active scan."""
+        filters = FiltersModel(older_than="180d")
+        request = ArchiveRequest(senders=["a@example.com"], filters=filters)
+        assert request.filters.older_than == "180d"

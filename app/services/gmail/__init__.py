@@ -5,13 +5,13 @@ Core Gmail operations: scanning, unsubscribing, marking read, deleting.
 
 This module is split into multiple files for better organization:
 - helpers.py: Security, filters, and email parsing utilities
-- scan.py: Email scanning operations
 - unsubscribe.py: Unsubscribe operations
-- mark_read.py: Mark as read operations
-- delete.py: Delete operations
+- mark_read.py: Mark-as-read scan + mark-as-read operations
+- delete.py: Delete scan + delete operations (Unsubscribe is a per-row
+  action here too, Phase 3 - see PROGRESS.md)
 - download.py: Email download operations
 - labels.py: Label management operations
-- archive.py: Archive operations
+- archive.py: Archive scan + archive operations
 - important.py: Mark important operations
 - restore.py: Restore operations (reverses an operation-log entry)
 """
@@ -25,17 +25,14 @@ from app.services.gmail.helpers import (
     get_sender_info,
     get_subject,
 )
-from app.services.gmail.scan import (
-    scan_emails,
-    get_scan_status,
-    get_scan_results,
-)
 from app.services.gmail.unsubscribe import (
     unsubscribe_single,
 )
 from app.services.gmail.mark_read import (
-    get_unread_count,
-    mark_emails_as_read,
+    scan_senders_for_markread,
+    get_markread_scan_status,
+    get_markread_scan_results,
+    mark_emails_as_read_bulk_background,
     get_mark_read_status,
 )
 from app.services.gmail.delete import (
@@ -61,6 +58,9 @@ from app.services.gmail.labels import (
     get_label_operation_status,
 )
 from app.services.gmail.archive import (
+    scan_senders_for_archive,
+    get_archive_scan_status,
+    get_archive_scan_results,
     archive_emails_background,
     get_archive_status,
 )
@@ -81,6 +81,9 @@ _get_subject = get_subject
 # Export all public functions
 __all__ = [
     # Archive
+    "scan_senders_for_archive",
+    "get_archive_scan_status",
+    "get_archive_scan_results",
     "archive_emails_background",
     "get_archive_status",
     # Auth (for backward compatibility)
@@ -111,19 +114,17 @@ __all__ = [
     "get_labels",
     "remove_label_from_senders_background",
     # Mark as read
+    "scan_senders_for_markread",
+    "get_markread_scan_status",
+    "get_markread_scan_results",
+    "mark_emails_as_read_bulk_background",
     "get_mark_read_status",
-    "get_unread_count",
-    "mark_emails_as_read",
     # Restore
     "restore_operation",
     # Private helpers (for testing)
     "_get_sender_info",
     "_get_subject",
     "_get_unsubscribe_from_headers",
-    # Scanning
-    "get_scan_results",
-    "get_scan_status",
-    "scan_emails",
     # Unsubscribe
     "unsubscribe_single",
 ]

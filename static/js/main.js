@@ -1,21 +1,15 @@
 /**
- * Gmail Unsubscribe - Main Entry Point
+ * Gmail Cleanup - Main Entry Point
  * Initializes the application and loads all modules
  */
 
 // Global state
-window.GmailCleaner = {
-    results: [],
-    deleteResults: [],
-    scanning: false,
-    deleteScanning: false,
+window.GmailCleaner = window.GmailCleaner || {};
+Object.assign(GmailCleaner, {
     currentView: 'login'
-};
+});
 
-// Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    GmailCleaner.Auth.checkStatus();
-    GmailCleaner.Auth.checkWebAuthMode();
     GmailCleaner.UI.setupNavigation();
-    GmailCleaner.Filters.setup();
+    GmailCleaner.Auth.checkStatus();
 });

@@ -10,9 +10,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from app.core import state
 from app.models import (
-    ScanRequest,
-    MarkReadRequest,
     DeleteScanRequest,
+    ArchiveScanRequest,
+    MarkReadScanRequest,
+    MarkReadBulkRequest,
     UnsubscribeRequest,
     DeleteEmailsRequest,
     DeleteBulkRequest,
@@ -24,11 +25,11 @@ from app.models import (
     MarkImportantRequest,
 )
 from app.services import (
-    scan_emails,
     get_gmail_service,
     sign_out,
     unsubscribe_single,
-    mark_emails_as_read,
+    scan_senders_for_markread,
+    mark_emails_as_read_bulk_background,
     scan_senders_for_delete,
     delete_emails_by_sender,
     delete_emails_bulk_background,
@@ -37,6 +38,7 @@ from app.services import (
     delete_label,
     apply_label_to_senders_background,
     remove_label_from_senders_background,
+    scan_senders_for_archive,
     archive_emails_background,
     mark_important_background,
 )
@@ -45,14 +47,9 @@ router = APIRouter(prefix="/api", tags=["Actions"])
 logger = logging.getLogger(__name__)
 
 
-@router.post("/scan")
-async def api_scan(request: ScanRequest, background_tasks: BackgroundTasks):
-    """Start email scan for unsubscribe links."""
-    filters_dict = (
-        request.filters.model_dump(exclude_none=True) if request.filters else None
-    )
-    background_tasks.add_task(scan_emails, request.limit, filters_dict)
-    return {"status": "started"}
+def _filters_dict(filters) -> dict | None:
+    """Convert a FiltersModel (or None) to a plain dict for build_gmail_query."""
+    return filters.model_dump(exclude_none=True) if filters else None
 
 
 @router.post("/sign-in")
@@ -101,7 +98,11 @@ async def api_sign_out():
 
 @router.post("/unsubscribe")
 async def api_unsubscribe(request: UnsubscribeRequest):
-    """Unsubscribe from a single sender."""
+    """Unsubscribe from a single sender.
+
+    Phase 3: called per-row from the merged Delete view's "Unsub" toggle -
+    there's no separate Unsubscribe tab/scan anymore (see PROGRESS.md).
+    """
     try:
         return unsubscribe_single(request.domain, request.link)
     except Exception as e:
@@ -112,13 +113,27 @@ async def api_unsubscribe(request: UnsubscribeRequest):
         ) from e
 
 
-@router.post("/mark-read")
-async def api_mark_read(request: MarkReadRequest, background_tasks: BackgroundTasks):
-    """Mark emails as read."""
-    filters_dict = (
-        request.filters.model_dump(exclude_none=True) if request.filters else None
+@router.post("/markread-scan")
+async def api_markread_scan(
+    request: MarkReadScanRequest, background_tasks: BackgroundTasks
+):
+    """Scan senders with unread mail for Mark-as-read's own sender-row list."""
+    background_tasks.add_task(
+        scan_senders_for_markread, request.limit, _filters_dict(request.filters)
     )
-    background_tasks.add_task(mark_emails_as_read, request.count, filters_dict)
+    return {"status": "started"}
+
+
+@router.post("/mark-read-bulk")
+async def api_mark_read_bulk(
+    request: MarkReadBulkRequest, background_tasks: BackgroundTasks
+):
+    """Mark unread emails as read for selected senders (background task)."""
+    background_tasks.add_task(
+        mark_emails_as_read_bulk_background,
+        request.senders,
+        _filters_dict(request.filters),
+    )
     return {"status": "started"}
 
 
@@ -126,11 +141,11 @@ async def api_mark_read(request: MarkReadRequest, background_tasks: BackgroundTa
 async def api_delete_scan(
     request: DeleteScanRequest, background_tasks: BackgroundTasks
 ):
-    """Scan senders for bulk delete."""
-    filters_dict = (
-        request.filters.model_dump(exclude_none=True) if request.filters else None
+    """Scan senders for bulk delete (also surfaces unsubscribe status per
+    sender, Phase 3 - see PROGRESS.md)."""
+    background_tasks.add_task(
+        scan_senders_for_delete, request.limit, _filters_dict(request.filters)
     )
-    background_tasks.add_task(scan_senders_for_delete, request.limit, filters_dict)
     return {"status": "started"}
 
 
@@ -211,7 +226,13 @@ async def api_delete_label(label_id: str):
 async def api_apply_label(
     request: ApplyLabelRequest, background_tasks: BackgroundTasks
 ):
-    """Apply a label to emails from selected senders."""
+    """Apply a label to emails from selected senders.
+
+    Phase 3: Label is now a per-row inline action on Delete/Mark-as-read/
+    Archive alike (PRD Section 5), so the caller supplies whichever view's
+    active filters surfaced the sender instead of always assuming Delete's
+    (state.delete_scan_filters).
+    """
     if not request.label_id or not request.label_id.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -226,7 +247,7 @@ async def api_apply_label(
         apply_label_to_senders_background,
         request.label_id,
         request.senders,
-        state.delete_scan_filters,
+        _filters_dict(request.filters),
     )
     return {"status": "started"}
 
@@ -235,7 +256,8 @@ async def api_apply_label(
 async def api_remove_label(
     request: RemoveLabelRequest, background_tasks: BackgroundTasks
 ):
-    """Remove a label from emails from selected senders."""
+    """Remove a label from emails from selected senders (Phase 3: per-row,
+    see api_apply_label)."""
     if not request.label_id or not request.label_id.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -250,7 +272,19 @@ async def api_remove_label(
         remove_label_from_senders_background,
         request.label_id,
         request.senders,
-        state.delete_scan_filters,
+        _filters_dict(request.filters),
+    )
+    return {"status": "started"}
+
+
+@router.post("/archive-scan")
+async def api_archive_scan(
+    request: ArchiveScanRequest, background_tasks: BackgroundTasks
+):
+    """Scan senders for Archive's own sender-row list (Phase 3 - Archive
+    previously had no scan of its own, see PROGRESS.md)."""
+    background_tasks.add_task(
+        scan_senders_for_archive, request.limit, _filters_dict(request.filters)
     )
     return {"status": "started"}
 
@@ -263,7 +297,9 @@ async def api_archive(request: ArchiveRequest, background_tasks: BackgroundTasks
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one sender is required",
         )
-    background_tasks.add_task(archive_emails_background, request.senders)
+    background_tasks.add_task(
+        archive_emails_background, request.senders, _filters_dict(request.filters)
+    )
     return {"status": "started"}
 
 
@@ -271,13 +307,19 @@ async def api_archive(request: ArchiveRequest, background_tasks: BackgroundTasks
 async def api_mark_important(
     request: MarkImportantRequest, background_tasks: BackgroundTasks
 ):
-    """Mark/unmark emails from selected senders as important."""
+    """Mark/unmark emails from selected senders as important (Phase 3:
+    per-row inline action across Delete/Mark-as-read/Archive)."""
     if not request.senders:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one sender is required",
         )
     background_tasks.add_task(
-        partial(mark_important_background, request.senders, important=request.important)
+        partial(
+            mark_important_background,
+            request.senders,
+            important=request.important,
+            filters=_filters_dict(request.filters),
+        )
     )
     return {"status": "started"}

@@ -4,8 +4,6 @@ Tests for Status API Endpoints
 Tests for GET status endpoints.
 """
 
-from unittest.mock import patch
-
 # client fixture is provided by conftest.py
 
 
@@ -18,18 +16,33 @@ class TestStatusEndpoints:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
 
-    def test_get_scan_status(self, client):
-        """GET /api/status should return scan status."""
-        response = client.get("/api/status")
+    def test_get_archive_scan_status(self, client):
+        """GET /api/archive-scan-status should return archive scan status."""
+        response = client.get("/api/archive-scan-status")
         assert response.status_code == 200
         data = response.json()
-        # Check expected fields exist
         assert "done" in data
         assert "message" in data
 
-    def test_get_scan_results(self, client):
-        """GET /api/results should return scan results."""
-        response = client.get("/api/results")
+    def test_get_archive_scan_results(self, client):
+        """GET /api/archive-scan-results should return archive scan results."""
+        response = client.get("/api/archive-scan-results")
+        assert response.status_code == 200
+        data = response.json()
+        # Results is a list of sender objects
+        assert isinstance(data, list)
+
+    def test_get_markread_scan_status(self, client):
+        """GET /api/markread-scan-status should return mark-as-read scan status."""
+        response = client.get("/api/markread-scan-status")
+        assert response.status_code == 200
+        data = response.json()
+        assert "done" in data
+        assert "message" in data
+
+    def test_get_markread_scan_results(self, client):
+        """GET /api/markread-scan-results should return mark-as-read scan results."""
+        response = client.get("/api/markread-scan-results")
         assert response.status_code == 200
         data = response.json()
         # Results is a list of sender objects
@@ -49,16 +62,6 @@ class TestStatusEndpoints:
         data = response.json()
         # Check expected web auth fields
         assert "web_auth_mode" in data or "has_credentials" in data
-
-    @patch("app.services.auth.get_gmail_service")
-    def test_get_unread_count(self, mock_get_service, client):
-        """GET /api/unread-count should return unread count."""
-        # Mock get_gmail_service to return error (no auth) to prevent browser opening
-        mock_get_service.return_value = (None, "Not authenticated")
-        response = client.get("/api/unread-count")
-        assert response.status_code == 200
-        data = response.json()
-        assert "count" in data or "error" in data
 
     def test_get_mark_read_status(self, client):
         """GET /api/mark-read-status should return mark-read status."""

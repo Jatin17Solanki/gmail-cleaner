@@ -92,7 +92,9 @@ An app-scoped operation log (not "restore everything in Gmail Trash") — every 
 
 ### UI/UX redesign
 
-A full visual refresh — warm, minimal design system, sidebar navigation (Delete / Mark as read / Archive / Routines / Restore), a filter drawer replacing the old inline filter row, and Label/Important actions available inline on every screen rather than gated to one tab. See **Wireframes** below.
+**Status: Done**
+
+A full visual refresh — warm, minimal design system, sidebar navigation (Delete / Mark as read / Archive / Routines / Restore), a filter drawer replacing the old inline filter row, and Label/Important actions available inline on every screen rather than gated to one tab. Unsubscribe is no longer a separate tab — it's now a per-row badge/toggle on the Delete view, since delete and unsubscribe scans were previously entirely separate systems. Archive and Mark as read each gained their own independent scan (previously Archive only acted on whatever Delete had already scanned, and Mark as read was a blind "mark N most recent" picker with no sender list at all). See **Wireframes** below.
 
 ### Multi-account switcher
 

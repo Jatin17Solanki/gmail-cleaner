@@ -34,6 +34,12 @@ class FiltersModel(BaseModel):
         description="Filter emails from specific sender (email address or domain)",
     )
     label: Optional[str] = Field(default=None, description="Gmail label filter")
+    unread_only: Optional[bool] = Field(
+        default=None, description="Restrict to unread mail (#99)"
+    )
+    has_attachment: Optional[bool] = Field(
+        default=None, description="Restrict to mail with attachments (#99)"
+    )
 
     @field_validator("older_than")
     @classmethod
@@ -105,33 +111,37 @@ class LoginRequest(BaseModel):
     password: str = Field(default="", description="Shared app password")
 
 
-class ScanRequest(BaseModel):
-    """Request to start email scan."""
-
-    limit: int = Field(default=500, ge=1, le=5000, description="Max emails to scan")
-    filters: Optional[FiltersModel] = Field(
-        default=None, description="Gmail filter options"
-    )
-
-
-class MarkReadRequest(BaseModel):
-    """Request to mark emails as read."""
-
-    count: int = Field(
-        default=100,
-        ge=0,
-        le=100000,
-        description="Number of emails to mark. Use 0 to mark all.",
-    )
-    filters: Optional[FiltersModel] = Field(
-        default=None, description="Gmail filter options"
-    )
-
-
 class DeleteScanRequest(BaseModel):
     """Request to scan senders for deletion."""
 
     limit: int = Field(default=1000, ge=1, le=10000, description="Max emails to scan")
+    filters: Optional[FiltersModel] = Field(
+        default=None, description="Gmail filter options"
+    )
+
+
+class ArchiveScanRequest(BaseModel):
+    """Request to scan senders for archiving."""
+
+    limit: int = Field(default=1000, ge=1, le=10000, description="Max emails to scan")
+    filters: Optional[FiltersModel] = Field(
+        default=None, description="Gmail filter options"
+    )
+
+
+class MarkReadScanRequest(BaseModel):
+    """Request to scan senders with unread mail."""
+
+    limit: int = Field(default=1000, ge=1, le=10000, description="Max emails to scan")
+    filters: Optional[FiltersModel] = Field(
+        default=None, description="Gmail filter options"
+    )
+
+
+class MarkReadBulkRequest(BaseModel):
+    """Request to mark unread emails as read for selected senders."""
+
+    senders: list[str] = Field(default=[], description="List of sender addresses")
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
     )
@@ -173,6 +183,9 @@ class ApplyLabelRequest(BaseModel):
 
     label_id: str = Field(..., description="Gmail label ID to apply")
     senders: list[str] = Field(default=[], description="List of sender addresses")
+    filters: Optional[FiltersModel] = Field(
+        default=None, description="Gmail filter options"
+    )
 
 
 class RemoveLabelRequest(BaseModel):
@@ -180,12 +193,18 @@ class RemoveLabelRequest(BaseModel):
 
     label_id: str = Field(..., description="Gmail label ID to remove")
     senders: list[str] = Field(default=[], description="List of sender addresses")
+    filters: Optional[FiltersModel] = Field(
+        default=None, description="Gmail filter options"
+    )
 
 
 class ArchiveRequest(BaseModel):
     """Request to archive emails from selected senders."""
 
     senders: list[str] = Field(default=[], description="List of sender addresses")
+    filters: Optional[FiltersModel] = Field(
+        default=None, description="Gmail filter options"
+    )
 
 
 class MarkImportantRequest(BaseModel):
@@ -194,6 +213,9 @@ class MarkImportantRequest(BaseModel):
     senders: list[str] = Field(default=[], description="List of sender addresses")
     important: bool = Field(
         default=True, description="True to mark important, False to unmark"
+    )
+    filters: Optional[FiltersModel] = Field(
+        default=None, description="Gmail filter options"
     )
 
 
@@ -219,13 +241,6 @@ class ScanStatusResponse(BaseModel):
     progress: int = 0
     message: str = "Ready"
     done: bool = False
-    error: Optional[str] = None
-
-
-class UnreadCountResponse(BaseModel):
-    """Unread email count response."""
-
-    count: int = 0
     error: Optional[str] = None
 
 

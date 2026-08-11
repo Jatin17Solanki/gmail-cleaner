@@ -2,9 +2,10 @@
 
 from .schemas import (
     LoginRequest,
-    ScanRequest,
-    MarkReadRequest,
     DeleteScanRequest,
+    ArchiveScanRequest,
+    MarkReadScanRequest,
+    MarkReadBulkRequest,
     UnsubscribeRequest,
     DeleteEmailsRequest,
     DeleteBulkRequest,
@@ -17,7 +18,6 @@ from .schemas import (
     StatusResponse,
     AuthStatusResponse,
     ScanStatusResponse,
-    UnreadCountResponse,
     UnsubscribeResponse,
     DeleteResponse,
     OperationLogEntry,
