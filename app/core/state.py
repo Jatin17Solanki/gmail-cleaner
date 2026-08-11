@@ -107,6 +107,28 @@ class AppState:
             "current_sender": 0,
         }
 
+        # Archive scan state (Phase 3 — Archive gets its own tab/scan,
+        # mirroring delete_scan_*, instead of reusing Delete's results)
+        self.archive_scan_results: list = []
+        self.archive_scan_status: dict = {
+            "progress": 0,
+            "message": "Ready",
+            "done": False,
+            "error": None,
+        }
+        self.archive_scan_filters: Optional[dict] = None
+
+        # Mark-as-read scan state (Phase 3 — sender-list view, mirroring
+        # delete_scan_*, replacing the old blind "mark N unread" flow)
+        self.markread_scan_results: list = []
+        self.markread_scan_status: dict = {
+            "progress": 0,
+            "message": "Ready",
+            "done": False,
+            "error": None,
+        }
+        self.markread_scan_filters: Optional[dict] = None
+
     def reset_scan(self):
         """Reset scan state."""
         self.scan_results = []
@@ -197,6 +219,28 @@ class AppState:
             "total_senders": 0,
             "current_sender": 0,
         }
+
+    def reset_archive_scan(self):
+        """Reset archive scan state."""
+        self.archive_scan_results = []
+        self.archive_scan_status = {
+            "progress": 0,
+            "message": "Ready",
+            "done": False,
+            "error": None,
+        }
+        self.archive_scan_filters = None
+
+    def reset_markread_scan(self):
+        """Reset mark-as-read scan state."""
+        self.markread_scan_results = []
+        self.markread_scan_status = {
+            "progress": 0,
+            "message": "Ready",
+            "done": False,
+            "error": None,
+        }
+        self.markread_scan_filters = None
 
 
 # Global state instance

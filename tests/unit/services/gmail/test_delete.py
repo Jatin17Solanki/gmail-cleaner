@@ -26,6 +26,47 @@ def _mock_service(list_results=None):
     return service
 
 
+def _mock_batch_service(message_ids, responses_by_id):
+    """Build a MagicMock Gmail service whose messages().list() returns
+    message_ids, and whose batch API feeds responses_by_id[msg_id] into
+    scan_senders_for_delete's process_message callback."""
+    service = MagicMock()
+    service.users.return_value.messages.return_value.list.return_value.execute.return_value = {
+        "messages": [{"id": mid} for mid in message_ids]
+    }
+    service.users.return_value.messages.return_value.get.side_effect = (
+        lambda userId, id, format, metadataHeaders: responses_by_id[id]
+    )
+
+    class _FakeBatch:
+        def __init__(self, callback):
+            self._callback = callback
+            self._responses = []
+
+        def add(self, request):
+            self._responses.append(request)
+
+        def execute(self):
+            for i, response in enumerate(self._responses):
+                self._callback(str(i), response, None)
+
+    service.new_batch_http_request.side_effect = lambda callback: _FakeBatch(callback)
+    return service
+
+
+def _message_response(sender_email, subject, headers=None):
+    all_headers = [
+        {"name": "From", "value": f"Sender <{sender_email}>"},
+        {"name": "Subject", "value": subject},
+        {"name": "Date", "value": "Wed, 15 Nov 2025 10:30:00 +0000"},
+    ] + (headers or [])
+    return {
+        "id": f"msg-{subject}",
+        "sizeEstimate": 100,
+        "payload": {"headers": all_headers},
+    }
+
+
 class TestDeleteEmailsBySenderQueryScoping:
     """Ensures delete queries route through build_gmail_query with active filters (#107)."""
 
@@ -116,6 +157,90 @@ class TestScanSendersForDeletePersistsFilters:
         scan_senders_for_delete(limit=10, filters=None)
 
         assert state.delete_scan_filters is None
+
+
+class TestScanSendersForDeleteUnsubscribeDetection:
+    """Phase 3: Unsubscribe is merged into the Delete scan (no separate tab),
+    so scan_senders_for_delete must also surface per-sender unsubscribe
+    link/type, same detection get_unsubscribe_from_headers already provides
+    for the (now-retired) standalone unsubscribe scan."""
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_captures_one_click_unsubscribe_link(self, mock_get_service):
+        response = _message_response(
+            "newsletter@example.com",
+            "Hello",
+            headers=[
+                {
+                    "name": "List-Unsubscribe",
+                    "value": "<https://example.com/unsub>",
+                },
+                {
+                    "name": "List-Unsubscribe-Post",
+                    "value": "List-Unsubscribe=One-Click",
+                },
+            ],
+        )
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+
+        scan_senders_for_delete(limit=10)
+
+        sender = state.delete_scan_results[0]
+        assert sender["unsubscribe_link"] == "https://example.com/unsub"
+        assert sender["unsubscribe_type"] == "one-click"
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_captures_manual_unsubscribe_link(self, mock_get_service):
+        response = _message_response(
+            "newsletter@example.com",
+            "Hello",
+            headers=[
+                {"name": "List-Unsubscribe", "value": "<https://example.com/unsub>"},
+            ],
+        )
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+
+        scan_senders_for_delete(limit=10)
+
+        sender = state.delete_scan_results[0]
+        assert sender["unsubscribe_link"] == "https://example.com/unsub"
+        assert sender["unsubscribe_type"] == "manual"
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_no_unsubscribe_header_leaves_link_none(self, mock_get_service):
+        response = _message_response("no-reply@example.com", "OTP")
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+
+        scan_senders_for_delete(limit=10)
+
+        sender = state.delete_scan_results[0]
+        assert sender["unsubscribe_link"] is None
+        assert sender["unsubscribe_type"] is None
+
+
+class TestScanSendersForDeleteSubjectCap:
+    """Phase 3: the expanded-row shell needs up to ~20 subjects per sender
+    (Phase 4c's preview cap), not the old 3 - costs no extra API calls
+    since headers are already fetched in the same batch metadata request."""
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_subjects_capped_at_twenty_not_three(self, mock_get_service):
+        message_ids = [f"m{i}" for i in range(25)]
+        responses = {
+            mid: _message_response("newsletter@example.com", f"Subject {i}")
+            for i, mid in enumerate(message_ids)
+        }
+        service = _mock_batch_service(message_ids, responses)
+        mock_get_service.return_value = (service, None)
+
+        scan_senders_for_delete(limit=25)
+
+        sender = state.delete_scan_results[0]
+        assert sender["count"] == 25
+        assert len(sender["subjects"]) == 20
 
 
 class TestDeleteEmailsWritesOperationLog:

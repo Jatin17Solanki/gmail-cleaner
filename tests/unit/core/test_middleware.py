@@ -60,7 +60,7 @@ class TestAuthEnabled:
 
     def test_static_assets_accessible_without_session(self, client):
         security.settings.app_password = "hunter2"
-        response = client.get("/static/css/base.css")
+        response = client.get("/static/css/design-system.css")
         assert response.status_code == 200
 
     def test_valid_session_grants_access(self, client):

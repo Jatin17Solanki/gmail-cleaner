@@ -1,0 +1,522 @@
+/* Gmail Cleanup Tool — app-specific styles
+   Everything design-system.css doesn't already define as a reusable
+   component: the app shell's full-viewport sizing, the filter drawer, the
+   account bar, sender rows' interactive/expanded state, message sub-rows,
+   the inline label-apply mini-toolbar, toasts, and responsive behavior.
+   Built on design-system.css's tokens/classes, not a parallel system. */
+
+html, body {
+  height: 100%;
+}
+
+body {
+  padding: 0;
+  overflow: hidden;
+}
+
+.app-shell {
+  max-width: none;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ----- Interactive feedback -----
+   design-system.css defines resting styles only (no :hover/:active/:focus)
+   - buttons and icon-only actions had no visual feedback for what's about
+   to happen on click. */
+
+.btn {
+  transition: background-color 0.1s ease, border-color 0.1s ease, transform 0.05s ease;
+}
+
+.btn:hover {
+  background: var(--bg-surface-alt);
+  border-color: var(--text-secondary);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary:hover {
+  background: #33302a;
+  border-color: #33302a;
+}
+
+.btn-danger:hover {
+  background: var(--danger-bg);
+}
+
+.btn:focus-visible,
+.sender-row-action-icon:focus-visible,
+.row-chevron:focus-visible,
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sender-row-action-icon:hover,
+.row-chevron:hover,
+.drawer-close:hover {
+  color: var(--accent-text);
+}
+
+/* ----- Sidebar ----- */
+
+.nav-item {
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.nav-item:hover:not(.active):not(.nav-item-disabled) {
+  background: var(--bg-surface-alt);
+}
+
+.nav-item-disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.nav-item-disabled:hover {
+  background: none;
+}
+
+/* ----- Content / account bar ----- */
+
+.content {
+  overflow: hidden;
+}
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.account-bar-title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 500;
+  font-size: 18px;
+}
+
+.account-slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.account-slot .account-email {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+}
+
+.account-slot .account-email i {
+  color: var(--accent);
+}
+
+/* ----- View shell ----- */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view.hidden {
+  display: none !important;
+}
+
+.scan-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.scan-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.spin {
+  animation: app-spin 0.8s linear infinite;
+}
+
+@keyframes app-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip .chip-remove {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.list-area {
+  min-height: 0;
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+}
+
+.empty-state i {
+  font-size: 48px;
+  color: var(--border-strong);
+  margin-bottom: 8px;
+}
+
+.empty-state h2 {
+  font-size: 16px;
+}
+
+.empty-state p {
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 360px;
+}
+
+.actions-bar-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* ----- Sender rows ----- */
+
+.sender-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.sender-row-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sender-row-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.sender-row-meta .meta-title,
+.sender-row-meta .meta-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-row-action-icon {
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sender-row-action-icon.active {
+  color: var(--accent-text);
+}
+
+.sender-row-action-icon.disabled {
+  color: var(--border-strong);
+  cursor: default;
+}
+
+.unsub-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.unsub-toggle input {
+  width: 13px;
+  height: 13px;
+}
+
+.unsub-toggle.disabled {
+  color: var(--text-muted);
+}
+
+.row-chevron {
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sender-row-detail {
+  padding-left: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label-apply-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  width: fit-content;
+  border: 1px solid var(--border);
+}
+
+.label-apply-toolbar select {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.label-apply-toolbar .btn {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.message-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.message-row .message-subject {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-row .message-cb:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.message-row i {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.message-row i.disabled {
+  color: var(--border-strong);
+  cursor: default;
+}
+
+.message-row i.copy-icon {
+  cursor: pointer;
+}
+
+.message-row-more {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 2px;
+}
+
+/* ----- Filter drawer ----- */
+
+.drawer-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+}
+
+.drawer-overlay .drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 280px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.drawer-close {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.drawer-footer {
+  display: flex;
+  gap: 8px;
+}
+
+.date-range-fallback-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0;
+}
+
+.date-range-fallback-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-range-fallback-inputs input {
+  flex: 1;
+}
+
+/* ----- Restore view ----- */
+
+.card-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.restore-note {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.restore-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.restore-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-surface-alt);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.restore-item-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.restore-item-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ----- Toasts ----- */
+
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+
+.toast {
+  background: var(--text-primary);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-width: 320px;
+}
+
+.toast.toast-error {
+  background: var(--danger-text);
+}
+
+/* ----- Responsive ----- */
+
+@media (max-width: 720px) {
+  .sidebar {
+    width: 64px;
+    padding: 16px 6px;
+  }
+
+  .sidebar .brand span,
+  .nav-item span {
+    display: none;
+  }
+
+  .sidebar .brand {
+    justify-content: center;
+    padding: 0 0 16px;
+  }
+
+  .nav-item {
+    justify-content: center;
+  }
+
+  .drawer-overlay .drawer {
+    width: 100%;
+  }
+
+  .account-bar-title {
+    font-size: 15px;
+  }
+}

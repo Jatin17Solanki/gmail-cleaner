@@ -5,13 +5,27 @@ Functions for marking/unmarking emails as important.
 """
 
 import time
+from typing import Optional
 
 from app.core import state
 from app.services.auth import get_gmail_service
+from app.services.gmail.helpers import build_gmail_query
 
 
-def mark_important_background(senders: list[str], *, important: bool = True) -> None:
-    """Mark/unmark emails from selected senders as important."""
+def mark_important_background(
+    senders: list[str], *, important: bool = True, filters: Optional[dict] = None
+) -> None:
+    """Mark/unmark emails from selected senders as important.
+
+    Args:
+        senders: Sender email addresses or domains.
+        important: True to mark important, False to unmark.
+        filters: Filters that were active in the scan that surfaced these
+            senders (see build_gmail_query) — Important is now a per-row
+            inline action across Delete/Mark-as-read/Archive (Phase 3), so
+            it must stay scoped to whichever view's filters found the
+            sender, same #107 pattern as delete/label/archive.
+    """
     state.reset_important()
 
     # Validate input
@@ -38,8 +52,11 @@ def mark_important_background(senders: list[str], *, important: bool = True) -> 
             state.important_status["message"] = f"{action} emails from {sender}..."
             state.important_status["progress"] = int((i / len(senders)) * 100)
 
-            # Find all emails from this sender
-            query = f"from:{sender}"
+            # Find all emails from this sender, scoped to the active scan
+            # filters (#107) instead of a bare from:{sender} string.
+            query_filters = dict(filters or {})
+            query_filters["sender"] = sender
+            query = build_gmail_query(query_filters)
             message_ids = []
             page_token = None
 

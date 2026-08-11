@@ -1,5 +1,5 @@
 /**
- * Gmail Unsubscribe - Authentication Module
+ * Gmail Cleanup - Authentication Module
  */
 
 window.GmailCleaner = window.GmailCleaner || {};
@@ -21,20 +21,16 @@ GmailCleaner.Auth = {
 
         if (authStatus.logged_in && authStatus.email) {
             const safeEmail = GmailCleaner.UI.escapeHtml(authStatus.email);
-            const initial = authStatus.email.charAt(0).toUpperCase();
             userSection.innerHTML = `
-                <span class="user-email">${safeEmail}</span>
-                <div class="user-avatar" onclick="GmailCleaner.Auth.showUserMenu()" title="${safeEmail}">${initial}</div>
-                <button class="btn btn-sm btn-secondary" onclick="GmailCleaner.Auth.signOut()">Sign Out</button>
+                <span class="account-email"><i class="ti ti-user-circle"></i>${safeEmail}</span>
+                <button class="btn" id="signOutBtn">Sign out</button>
             `;
-            GmailCleaner.Filters.showBar(true);
-            GmailCleaner.UI.showView('unsubscribe');
+            document.getElementById('signOutBtn')?.addEventListener('click', () => this.signOut());
 
-            // Load labels for filter dropdown
-            this.loadLabelsForFilter();
+            GmailCleaner.UI.showView('delete');
+            this.loadLabelsForFilters();
         } else {
             userSection.innerHTML = '';
-            GmailCleaner.Filters.showBar(false);
             // Reset the sign-in button before showing the login view - it may
             // still be stuck disabled/"Signing in..." from a previous sign-in
             // click, since a *successful* sign-in never resets it (it just
@@ -44,15 +40,16 @@ GmailCleaner.Auth = {
         }
     },
 
-    async loadLabelsForFilter() {
+    async loadLabelsForFilters() {
         try {
-            // Load labels using the Labels module
             const labels = await GmailCleaner.Labels.loadLabels();
-            if (labels && labels.user) {
-                GmailCleaner.Filters.populateLabelDropdown(labels.user);
+            if (labels && labels.user_labels) {
+                Object.values(GmailCleaner.SenderList.views).forEach(view => {
+                    view.populateLabels(labels.user_labels);
+                });
             }
         } catch (error) {
-            console.error('Error loading labels for filter:', error);
+            console.error('Error loading labels for filters:', error);
         }
     },
 
@@ -69,7 +66,6 @@ GmailCleaner.Auth = {
             const statusResp = await fetch('/api/web-auth-status');
             const status = await statusResp.json();
 
-            // Check if credentials exist
             if (!status.has_credentials) {
                 this.resetSignInButton();
                 alert('credentials.json not found!\n\nSetup instructions:\n1. Go to https://console.cloud.google.com/\n2. Create project → Enable Gmail API\n3. Create OAuth credentials (Desktop app)\n4. Download JSON → rename to credentials.json\n5. Put credentials.json in the app folder\n6. Restart the app');
@@ -131,8 +127,6 @@ GmailCleaner.Auth = {
                     const remaining = maxAttempts - attempts;
                     signInBtn.innerHTML = `<span>Signing in... (${remaining}s)</span>`;
                 }
-                // After ~10s, give a more specific nudge in case the browser
-                // tab was missed (blocked pop-up, opened behind the window, etc).
                 if (attempts === 10) {
                     this.setStatus("Still waiting - check for a Google sign-in tab that may have opened (it can be hidden behind this window, or blocked as a pop-up).");
                 }
@@ -151,10 +145,7 @@ GmailCleaner.Auth = {
         const signInBtn = document.getElementById('signInBtn');
         if (signInBtn) {
             signInBtn.disabled = false;
-            signInBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20">
-                <path fill="currentColor" d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
-            </svg>
-            Sign in with Google`;
+            signInBtn.innerHTML = '<i class="ti ti-brand-google"></i>Sign in with Google';
         }
         this.clearStatus();
     },
@@ -175,31 +166,19 @@ GmailCleaner.Auth = {
         }
     },
 
-    async checkWebAuthMode() {
-        // No longer needed - sign in works everywhere now!
-        return;
-    },
-
     async signOut() {
         if (!confirm('Sign out of your Gmail account?')) return;
 
         try {
             await fetch('/api/sign-out', { method: 'POST' });
-            GmailCleaner.results = [];
-            GmailCleaner.Scanner.updateResultsBadge();
-            GmailCleaner.Scanner.displayResults();
-            document.getElementById('selectAll').checked = false;
+            Object.values(GmailCleaner.SenderList.views).forEach(view => view.reset());
             this.checkStatus();
         } catch (error) {
             alert('Error signing out: ' + error.message);
         }
-    },
-
-    showUserMenu() {
-        console.log('User menu clicked');
     }
 };
 
-// Global shortcuts for onclick handlers
-function signIn() { GmailCleaner.Auth.signIn(); }
-function signOut() { GmailCleaner.Auth.signOut(); }
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('signInBtn')?.addEventListener('click', () => GmailCleaner.Auth.signIn());
+});

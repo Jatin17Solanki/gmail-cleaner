@@ -11,15 +11,16 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
 
 from app.services import (
-    get_scan_status,
-    get_scan_results,
     check_login_status,
     get_web_auth_status,
-    get_unread_count,
     get_mark_read_status,
     get_delete_scan_status,
     get_delete_scan_results,
     get_delete_bulk_status,
+    get_archive_scan_status,
+    get_archive_scan_results,
+    get_markread_scan_status,
+    get_markread_scan_results,
     get_download_status,
     get_download_csv,
     get_labels,
@@ -30,32 +31,6 @@ from app.services import (
 
 router = APIRouter(prefix="/api", tags=["Status"])
 logger = logging.getLogger(__name__)
-
-
-@router.get("/status")
-async def api_status():
-    """Get email scan status."""
-    try:
-        return get_scan_status()
-    except Exception as e:
-        logger.exception("Error getting scan status")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get scan status",
-        ) from e
-
-
-@router.get("/results")
-async def api_results():
-    """Get email scan results."""
-    try:
-        return get_scan_results()
-    except Exception as e:
-        logger.exception("Error getting scan results")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get scan results",
-        ) from e
 
 
 @router.get("/auth-status")
@@ -81,19 +56,6 @@ async def api_web_auth_status():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get web auth status",
-        ) from e
-
-
-@router.get("/unread-count")
-async def api_unread_count():
-    """Get unread email count."""
-    try:
-        return get_unread_count()
-    except Exception as e:
-        logger.exception("Error getting unread count")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get unread count",
         ) from e
 
 
@@ -125,7 +87,13 @@ async def api_delete_scan_status():
 
 @router.get("/delete-scan-results")
 async def api_delete_scan_results():
-    """Get delete scan results (senders grouped by count)."""
+    """Get delete scan results (senders grouped by count).
+
+    Phase 3: Unsubscribe is a per-row action on this same view now (see
+    PROGRESS.md), so each sender also carries unsubscribe_link/
+    unsubscribe_type - there's no separate unsubscribe scan/endpoint
+    anymore.
+    """
     try:
         return get_delete_scan_results()
     except Exception as e:
@@ -133,6 +101,58 @@ async def api_delete_scan_results():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get delete scan results",
+        ) from e
+
+
+@router.get("/archive-scan-status")
+async def api_archive_scan_status():
+    """Get archive scan status."""
+    try:
+        return get_archive_scan_status()
+    except Exception as e:
+        logger.exception("Error getting archive scan status")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get archive scan status",
+        ) from e
+
+
+@router.get("/archive-scan-results")
+async def api_archive_scan_results():
+    """Get archive scan results (senders grouped by count)."""
+    try:
+        return get_archive_scan_results()
+    except Exception as e:
+        logger.exception("Error getting archive scan results")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get archive scan results",
+        ) from e
+
+
+@router.get("/markread-scan-status")
+async def api_markread_scan_status():
+    """Get mark-as-read scan status."""
+    try:
+        return get_markread_scan_status()
+    except Exception as e:
+        logger.exception("Error getting mark-as-read scan status")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get mark-as-read scan status",
+        ) from e
+
+
+@router.get("/markread-scan-results")
+async def api_markread_scan_results():
+    """Get mark-as-read scan results (senders with unread mail, grouped by count)."""
+    try:
+        return get_markread_scan_results()
+    except Exception as e:
+        logger.exception("Error getting mark-as-read scan results")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get mark-as-read scan results",
         ) from e
 
 

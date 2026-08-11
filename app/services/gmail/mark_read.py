@@ -1,133 +1,264 @@
 """
 Gmail Mark as Read Operations
 ------------------------------
-Functions for marking emails as read.
+Functions for scanning senders with unread mail and marking selected
+senders' unread mail as read.
 """
 
+import time
+from collections import defaultdict
 from typing import Optional
 
 from app.core import state
 from app.services import operation_log
 from app.services.auth import get_gmail_service
-from app.services.gmail.helpers import build_gmail_query
+from app.services.gmail.helpers import build_gmail_query, get_sender_info, get_subject
+
+# Phase 3: Mark as read gets its own sender-row list (previously just an
+# aggregate unread count + a blind "mark N most recent" picker), mirroring
+# scan_senders_for_delete/scan_senders_for_archive. Same ~20 subject/
+# message-preview cap as the other two scans (Phase 4c).
+SUBJECTS_PER_SENDER_CAP = 20
 
 
-def get_unread_count() -> dict:
-    """Get estimated count of unread emails in Inbox (fast, for display)."""
+def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None):
+    """Scan unread emails and group by sender for Mark-as-read's sender-row list."""
+    if limit <= 0:
+        state.reset_markread_scan()
+        state.markread_scan_status["error"] = "Limit must be greater than 0"
+        state.markread_scan_status["done"] = True
+        return
+
+    state.reset_markread_scan()
+    state.markread_scan_filters = filters
+    state.markread_scan_status["message"] = "Connecting to Gmail..."
+
     service, error = get_gmail_service()
     if error:
-        return {"count": 0, "error": error}
+        state.markread_scan_status["error"] = error
+        state.markread_scan_status["done"] = True
+        return
 
     try:
-        # Use resultSizeEstimate for fast display (1 API call)
+        state.markread_scan_status["message"] = "Fetching emails..."
+
+        # Always scoped to unread mail - that's the whole point of this view.
+        query_filters = dict(filters or {})
+        query_filters["unread_only"] = True
+        query = build_gmail_query(query_filters)
+
         results = (
             service.users()
             .messages()
-            .list(userId="me", q="is:unread in:inbox", maxResults=1)
+            .list(userId="me", maxResults=min(limit, 500), q=query or None)
             .execute()
         )
 
-        count = results.get("resultSizeEstimate", 0)
-        return {"count": count}
-    except Exception as e:
-        return {"count": 0, "error": str(e)}
+        messages = results.get("messages", [])
 
-
-def mark_emails_as_read(count: int = 100, filters: Optional[dict] = None):
-    """Mark unread emails as read.
-
-    Args:
-        count: Number of emails to mark. Use 0 to mark ALL unread emails.
-        filters: Optional filters to apply.
-    """
-    # Validate input
-    if count < 0:
-        state.reset_mark_read()
-        state.mark_read_status["error"] = "Count must be 0 or greater"
-        state.mark_read_status["done"] = True
-        return
-
-    state.reset_mark_read()
-    state.mark_read_status["message"] = "Connecting to Gmail..."
-
-    service, error = get_gmail_service()
-    if error:
-        state.mark_read_status["error"] = error
-        state.mark_read_status["done"] = True
-        return
-
-    marked_ids: list[str] = []
-    try:
-        state.mark_read_status["message"] = "Finding unread emails..."
-
-        # Build query
-        query = "is:unread"
-        if filter_query := build_gmail_query(filters):
-            query = f"{query} {filter_query}"
-
-        # count=0 means "all" - no limit
-        mark_all = count == 0
-        page_size = 500
-        batch_size = 100
-        marked = 0
-        remaining = count  # Only used when not mark_all
-        page_token = None
-
-        # Process messages in chunks as we paginate (memory efficient)
-        while True:
-            # Fetch a page of messages
+        while "nextPageToken" in results and len(messages) < limit:
             results = (
                 service.users()
                 .messages()
                 .list(
                     userId="me",
-                    q=query,
-                    maxResults=page_size,
-                    pageToken=page_token,
+                    maxResults=min(limit - len(messages), 500),
+                    pageToken=results["nextPageToken"],
+                    q=query or None,
                 )
                 .execute()
             )
+            messages.extend(results.get("messages", []))
 
-            messages = results.get("messages", [])
-            if not messages:
-                break
+        messages = messages[:limit]
+        total = len(messages)
 
-            # Slice to respect remaining count (unless marking all)
-            if not mark_all:
-                messages = messages[:remaining]
-                remaining -= len(messages)
+        if total == 0:
+            state.markread_scan_status["message"] = "No unread emails found"
+            state.markread_scan_status["done"] = True
+            return
 
-            # Mark this page in batches of 100
-            for i in range(0, len(messages), batch_size):
-                batch = messages[i : i + batch_size]
-                ids = [msg["id"] for msg in batch]
+        state.markread_scan_status["message"] = f"Scanning {total} emails..."
 
-                service.users().messages().batchModify(
-                    userId="me", body={"ids": ids, "removeLabelIds": ["UNREAD"]}
-                ).execute()
+        sender_counts: dict[str, dict] = defaultdict(
+            lambda: {
+                "count": 0,
+                "sender": "",
+                "email": "",
+                "subjects": [],
+                "first_date": None,
+                "last_date": None,
+                "message_ids": [],
+                "total_size": 0,
+            }
+        )
+        processed = 0
+        batch_size = 100
 
-                marked += len(ids)
-                marked_ids.extend(ids)
-                state.mark_read_status["message"] = f"Marked {marked} as read..."
-                state.mark_read_status["marked_count"] = marked
+        def process_message(request_id, response, exception) -> None:
+            nonlocal processed
+            processed += 1
 
-            # Stop if we've marked enough (when not marking all)
-            if not mark_all and remaining <= 0:
-                break
+            if exception:
+                return
 
-            # Check for more pages
-            page_token = results.get("nextPageToken")
-            if not page_token:
-                break
+            headers = response.get("payload", {}).get("headers", [])
+            sender_name, sender_email = get_sender_info(headers)
+            subject = get_subject(headers)
+            msg_id = response.get("id", "")
+            size_estimate = response.get("sizeEstimate", 0)
 
-        if marked == 0:
-            state.mark_read_status["message"] = "No unread emails found"
-            state.mark_read_status["progress"] = 100
-        else:
-            state.mark_read_status["message"] = f"Done! Marked {marked} emails as read"
-            state.mark_read_status["progress"] = 100
+            email_date = None
+            for header in headers:
+                if header["name"].lower() == "date":
+                    email_date = header["value"]
+                    break
 
+            if sender_email:
+                sender_counts[sender_email]["count"] += 1
+                sender_counts[sender_email]["sender"] = sender_name
+                sender_counts[sender_email]["email"] = sender_email
+                sender_counts[sender_email]["message_ids"].append(msg_id)
+                sender_counts[sender_email]["total_size"] += size_estimate
+                if len(sender_counts[sender_email]["subjects"]) < SUBJECTS_PER_SENDER_CAP:
+                    sender_counts[sender_email]["subjects"].append(subject)
+
+                if email_date:
+                    if sender_counts[sender_email]["first_date"] is None:
+                        sender_counts[sender_email]["first_date"] = email_date
+                    sender_counts[sender_email]["last_date"] = email_date
+
+        for i in range(0, len(messages), batch_size):
+            batch_ids = messages[i : i + batch_size]
+            batch = service.new_batch_http_request(callback=process_message)
+
+            for msg_data in batch_ids:
+                batch.add(
+                    service.users()
+                    .messages()
+                    .get(
+                        userId="me",
+                        id=msg_data["id"],
+                        format="metadata",
+                        metadataHeaders=["From", "Subject", "Date"],
+                    )
+                )
+
+            batch.execute()
+
+            progress = int((i + len(batch_ids)) / total * 100)
+            state.markread_scan_status["progress"] = progress
+            state.markread_scan_status["message"] = (
+                f"Scanned {processed}/{total} emails"
+            )
+
+            if (i // batch_size + 1) % 5 == 0:
+                time.sleep(0.3)
+
+        sorted_senders = sorted(
+            [{"email": k, **v} for k, v in sender_counts.items()],
+            key=lambda x: x["count"],
+            reverse=True,
+        )
+
+        state.markread_scan_results = sorted_senders
+        state.markread_scan_status["message"] = f"Found {len(sorted_senders)} senders"
+        state.markread_scan_status["done"] = True
+
+    except Exception as e:
+        state.markread_scan_status["error"] = str(e)
+        state.markread_scan_status["done"] = True
+
+
+def get_markread_scan_status() -> dict:
+    """Get mark-as-read scan status."""
+    return state.markread_scan_status.copy()
+
+
+def get_markread_scan_results() -> list:
+    """Get mark-as-read scan results."""
+    return state.markread_scan_results.copy()
+
+
+def mark_emails_as_read_bulk_background(
+    senders: list[str], filters: Optional[dict] = None
+) -> None:
+    """Mark unread emails as read for selected senders (background task).
+
+    Args:
+        senders: Sender email addresses or domains.
+        filters: Filters that were active in the scan that surfaced these
+            senders (see build_gmail_query) — marking stays scoped to the
+            filtered subset the user reviewed (#107 pattern).
+    """
+    state.reset_mark_read()
+
+    if not senders or not isinstance(senders, list):
         state.mark_read_status["done"] = True
+        state.mark_read_status["error"] = "No senders specified"
+        return
+
+    state.mark_read_status["total_senders"] = len(senders)
+    state.mark_read_status["message"] = "Starting..."
+
+    service, error = get_gmail_service()
+    if error:
+        state.mark_read_status["done"] = True
+        state.mark_read_status["error"] = error
+        return
+
+    marked_ids: list[str] = []
+    try:
+        total_marked = 0
+
+        for i, sender in enumerate(senders):
+            state.mark_read_status["current_sender"] = i + 1
+            state.mark_read_status["message"] = f"Marking emails from {sender}..."
+            state.mark_read_status["progress"] = int((i / len(senders)) * 100)
+
+            query_filters = dict(filters or {})
+            query_filters["sender"] = sender
+            query_filters["unread_only"] = True
+            query = build_gmail_query(query_filters)
+            message_ids = []
+            page_token = None
+
+            while True:
+                result = (
+                    service.users()
+                    .messages()
+                    .list(userId="me", q=query, maxResults=500, pageToken=page_token)
+                    .execute()
+                )
+
+                messages = result.get("messages", [])
+                message_ids.extend([m["id"] for m in messages])
+
+                page_token = result.get("nextPageToken")
+                if not page_token:
+                    break
+
+            if not message_ids:
+                continue
+
+            for j in range(0, len(message_ids), 100):
+                batch = message_ids[j : j + 100]
+                service.users().messages().batchModify(
+                    userId="me", body={"ids": batch, "removeLabelIds": ["UNREAD"]}
+                ).execute()
+                total_marked += len(batch)
+                marked_ids.extend(batch)
+                state.mark_read_status["marked_count"] = total_marked
+
+                if (j + 100) % 500 == 0:
+                    time.sleep(0.3)
+
+        state.mark_read_status["progress"] = 100
+        state.mark_read_status["done"] = True
+        state.mark_read_status["marked_count"] = total_marked
+        state.mark_read_status["message"] = (
+            f"Marked {total_marked} emails from {len(senders)} senders as read"
+        )
 
     except Exception as e:
         state.mark_read_status["error"] = str(e)
@@ -141,10 +272,15 @@ def mark_emails_as_read(count: int = 100, filters: Optional[dict] = None):
                 message_ids=marked_ids,
                 added_labels=[],
                 removed_labels=["UNREAD"],
-                summary={},
+                summary={"senders": senders},
             )
+        # Remove fully-marked senders from the cached scan results, same
+        # pattern delete/archive use for their scan results.
+        state.markread_scan_results = [
+            r for r in state.markread_scan_results if r.get("email") not in senders
+        ]
 
 
 def get_mark_read_status() -> dict:
-    """Get mark-as-read status."""
+    """Get mark-as-read bulk operation status."""
     return state.mark_read_status.copy()

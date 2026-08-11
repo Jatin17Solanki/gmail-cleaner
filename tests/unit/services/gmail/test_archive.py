@@ -1,16 +1,22 @@
 """
 Tests for Gmail Archive Operations
 ------------------------------------
-No test file existed for archive.py before Phase 2 (pre-existing coverage
-gap, not backfilled here per CLAUDE.md's scope-creep guidance). This file is
-scoped narrowly to Phase 2's operation-log behavior: a successful archive
-must be restorable.
+Phase 2 added operation-log coverage: a successful archive must be
+restorable. Phase 3 gives Archive its own scan (previously it only operated
+on whatever the Delete tab had already scanned) and routes the archive
+query through build_gmail_query with the active scan's filters, same #107
+pattern already used by delete/label — Archive was the one op still using a
+bare f-string query with no filters param.
 """
 
 from unittest.mock import MagicMock, patch
 
+from app.core import state
 from app.services import operation_log
-from app.services.gmail.archive import archive_emails_background
+from app.services.gmail.archive import (
+    archive_emails_background,
+    scan_senders_for_archive,
+)
 
 
 def _mock_service(list_results=None):
@@ -19,6 +25,48 @@ def _mock_service(list_results=None):
         list_results if list_results is not None else {"messages": []}
     )
     return service
+
+
+def _mock_batch_service(message_ids, responses_by_id):
+    """Build a MagicMock Gmail service whose messages().list() returns
+    message_ids, and whose batch API feeds responses_by_id[msg_id] into
+    scan_senders_for_archive's process_message callback."""
+    service = MagicMock()
+    service.users.return_value.messages.return_value.list.return_value.execute.return_value = {
+        "messages": [{"id": mid} for mid in message_ids]
+    }
+    service.users.return_value.messages.return_value.get.side_effect = (
+        lambda userId, id, format, metadataHeaders: responses_by_id[id]
+    )
+
+    class _FakeBatch:
+        def __init__(self, callback):
+            self._callback = callback
+            self._responses = []
+
+        def add(self, request):
+            self._responses.append(request)
+
+        def execute(self):
+            for i, response in enumerate(self._responses):
+                self._callback(str(i), response, None)
+
+    service.new_batch_http_request.side_effect = lambda callback: _FakeBatch(callback)
+    return service
+
+
+def _message_response(sender_email, subject):
+    return {
+        "id": f"msg-{subject}",
+        "sizeEstimate": 100,
+        "payload": {
+            "headers": [
+                {"name": "From", "value": f"Sender <{sender_email}>"},
+                {"name": "Subject", "value": subject},
+                {"name": "Date", "value": "Wed, 15 Nov 2025 10:30:00 +0000"},
+            ]
+        },
+    }
 
 
 class TestArchiveWritesOperationLog:
@@ -46,3 +94,99 @@ class TestArchiveWritesOperationLog:
         archive_emails_background(["a@example.com"])
 
         assert operation_log.list_entries() == []
+
+
+class TestArchiveEmailsQueryScoping:
+    """Phase 3, #107 pattern: archive must only affect the filtered subset
+    of messages the user actually reviewed, not every inbox message from
+    that sender - archive_emails_background previously used a bare
+    f"from:{sender} in:inbox" string with no filters param at all."""
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_archive_scoped_to_sender_and_inbox_by_default(self, mock_get_service):
+        service = _mock_service()
+        mock_get_service.return_value = (service, None)
+
+        archive_emails_background(["newsletter@example.com"])
+
+        list_call = service.users.return_value.messages.return_value.list
+        query = list_call.call_args.kwargs["q"]
+        assert "from:newsletter@example.com" in query
+        assert "label:INBOX" in query
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_archive_scoped_to_sender_and_active_filters(self, mock_get_service):
+        service = _mock_service()
+        mock_get_service.return_value = (service, None)
+
+        archive_emails_background(
+            ["newsletter@example.com"], {"older_than": "180d"}
+        )
+
+        list_call = service.users.return_value.messages.return_value.list
+        query = list_call.call_args.kwargs["q"]
+        assert "from:newsletter@example.com" in query
+        assert "older_than:180d" in query
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_archive_removes_archived_senders_from_cached_scan_results(
+        self, mock_get_service
+    ):
+        state.archive_scan_results = [
+            {"email": "newsletter@example.com", "count": 3},
+            {"email": "keep@example.com", "count": 1},
+        ]
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        archive_emails_background(["newsletter@example.com"])
+
+        remaining = [r["email"] for r in state.archive_scan_results]
+        assert remaining == ["keep@example.com"]
+
+
+class TestScanSendersForArchive:
+    """Phase 3: Archive gets its own scan, mirroring scan_senders_for_delete
+    (sender/count/subjects/dates/message_ids), independent of Delete's
+    cached results."""
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_scan_groups_by_sender(self, mock_get_service):
+        responses = {
+            "m1": _message_response("promo@example.com", "Sale 1"),
+            "m2": _message_response("promo@example.com", "Sale 2"),
+        }
+        service = _mock_batch_service(["m1", "m2"], responses)
+        mock_get_service.return_value = (service, None)
+
+        scan_senders_for_archive(limit=10)
+
+        assert len(state.archive_scan_results) == 1
+        sender = state.archive_scan_results[0]
+        assert sender["email"] == "promo@example.com"
+        assert sender["count"] == 2
+        assert set(sender["message_ids"]) == {"msg-Sale 1", "msg-Sale 2"}
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_scan_stores_active_filters_in_state(self, mock_get_service):
+        mock_get_service.return_value = (None, "Not authenticated")
+
+        scan_senders_for_archive(limit=10, filters={"older_than": "180d"})
+
+        assert state.archive_scan_filters == {"older_than": "180d"}
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_scan_no_results_reports_done(self, mock_get_service):
+        service = _mock_service({"messages": []})
+        mock_get_service.return_value = (service, None)
+
+        scan_senders_for_archive(limit=10)
+
+        assert state.archive_scan_status["done"] is True
+        assert state.archive_scan_results == []
+
+    def test_invalid_limit_reports_error(self):
+        scan_senders_for_archive(limit=0)
+
+        assert state.archive_scan_status["error"] == "Limit must be greater than 0"
+        assert state.archive_scan_status["done"] is True

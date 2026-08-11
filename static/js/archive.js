@@ -1,23 +1,22 @@
 /**
- * Gmail Cleanup - Mark as Read View (Phase 3)
+ * Gmail Cleanup - Archive View (Phase 3)
  *
- * Replaces the old blind "mark N most recent unread" count-based flow with
- * a sender-row list matching Delete/Archive - own scan (always scoped to
- * unread mail) and a senders-scoped bulk action. See PROGRESS.md.
+ * Archive gets its own sidebar tab and its own scan (previously it only
+ * operated on whatever the Delete tab had already scanned, with no
+ * filters/scan of its own - see PROGRESS.md).
  */
 
 window.GmailCleaner = window.GmailCleaner || {};
 
-GmailCleaner.MarkRead = (() => {
+GmailCleaner.Archive = (() => {
     const view = GmailCleaner.SenderList.create({
-        prefix: 'markread',
-        scanEndpoint: '/api/markread-scan',
-        scanStatusEndpoint: '/api/markread-scan-status',
-        scanResultsEndpoint: '/api/markread-scan-results',
+        prefix: 'archive',
+        scanEndpoint: '/api/archive-scan',
+        scanStatusEndpoint: '/api/archive-scan-status',
+        scanResultsEndpoint: '/api/archive-scan-results',
         showUnsubscribe: false,
         showSubjectPreview: false,
-        showUnreadFilter: false,
-        emptyAfterScanTitle: 'No unread senders found',
+        emptyAfterScanTitle: 'No senders found',
         emptyAfterScanBody: 'Try widening your filters and scanning again.',
         onSelectionChange: (emails, count) => updateSelectionBar(emails, count),
     });
@@ -33,39 +32,39 @@ GmailCleaner.MarkRead = (() => {
         const container = view.id('ActionButtons');
         if (!container) return;
         container.innerHTML = `
-            <button class="btn btn-primary" id="markReadSelectedBtn"><i class="ti ti-mail-opened"></i>Mark selected as read</button>
+            <button class="btn btn-primary" id="archiveSelectedBtn"><i class="ti ti-archive"></i>Archive selected</button>
         `;
-        document.getElementById('markReadSelectedBtn').addEventListener('click', markSelectedAsRead);
+        document.getElementById('archiveSelectedBtn').addEventListener('click', archiveSelected);
     }
 
-    async function markSelectedAsRead() {
+    async function archiveSelected() {
         const emails = view.getSelectedSenderEmails();
         if (emails.length === 0) {
             GmailCleaner.UI.showErrorToast('No senders selected');
             return;
         }
         try {
-            await fetch('/api/mark-read-bulk', {
+            await fetch('/api/archive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ senders: emails, filters: view.filters })
             });
-            await pollMarkRead();
+            await pollArchive();
             view.removeSendersFromResults(emails);
-            GmailCleaner.UI.showSuccessToast(`Marked emails from ${emails.length} sender${emails.length === 1 ? '' : 's'} as read`);
+            GmailCleaner.UI.showSuccessToast(`Archived emails from ${emails.length} sender${emails.length === 1 ? '' : 's'}`);
         } catch (error) {
-            GmailCleaner.UI.showErrorToast('Error marking as read: ' + error.message);
+            GmailCleaner.UI.showErrorToast('Error archiving: ' + error.message);
         }
     }
 
-    async function pollMarkRead(attempts = 0) {
-        const response = await fetch('/api/mark-read-status');
+    async function pollArchive(attempts = 0) {
+        const response = await fetch('/api/archive-status');
         const status = await response.json();
         if (status.error) throw new Error(status.error);
         if (status.done) return;
-        if (attempts > 600) throw new Error('Mark-as-read timed out');
+        if (attempts > 600) throw new Error('Archive timed out');
         await new Promise(resolve => setTimeout(resolve, 300));
-        return pollMarkRead(attempts + 1);
+        return pollArchive(attempts + 1);
     }
 
     buildActionButtons();

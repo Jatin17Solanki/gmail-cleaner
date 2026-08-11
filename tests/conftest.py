@@ -56,6 +56,8 @@ def reset_app_state():
         app_state.reset_label_operation()
         app_state.reset_archive()
         app_state.reset_important()
+        app_state.reset_archive_scan()
+        app_state.reset_markread_scan()
         app_state.current_user = {"email": None, "logged_in": False}
 
     _reset()
