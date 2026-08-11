@@ -18,6 +18,7 @@ GmailCleaner.Auth = {
 
     updateUI(authStatus) {
         const userSection = document.getElementById('userSection');
+        this.currentEmail = (authStatus.logged_in && authStatus.email) ? authStatus.email : null;
 
         if (authStatus.logged_in && authStatus.email) {
             const safeEmail = GmailCleaner.UI.escapeHtml(authStatus.email);
@@ -136,6 +137,12 @@ GmailCleaner.Auth = {
     async addAccount() {
         document.getElementById('accountDropdown')?.classList.add('hidden');
         this.setStatus('A browser tab should have opened to authorize another Google account. Complete it there - this page will update automatically.');
+        // The account that's active right now - "logged_in" alone can't
+        // signal completion here, since it's already true the entire time
+        // the new account's consent screen is open (the original account
+        // never stops being signed in). Poll until the active account's
+        // email actually changes instead.
+        const previousEmail = this.currentEmail;
         try {
             const response = await fetch('/api/accounts/add', { method: 'POST' });
             const result = await response.json();
@@ -146,7 +153,7 @@ GmailCleaner.Auth = {
                 return;
             }
 
-            this.pollStatus();
+            this.pollStatus(0, previousEmail);
         } catch (error) {
             this.clearStatus();
             GmailCleaner.UI.showErrorToast('Error adding account: ' + error.message);
@@ -221,7 +228,7 @@ GmailCleaner.Auth = {
         }
     },
 
-    async pollStatus(attempts = 0) {
+    async pollStatus(attempts = 0, waitForEmailChangeFrom = null) {
         const maxAttempts = 120;
         const signInBtn = document.getElementById('signInBtn');
 
@@ -229,7 +236,14 @@ GmailCleaner.Auth = {
             const response = await fetch('/api/auth-status');
             const status = await response.json();
 
-            if (status.logged_in) {
+            // For "Add another account" (waitForEmailChangeFrom set), the
+            // previously-active account stays logged_in:true the whole
+            // time the new consent screen is open - only treat this as
+            // done once the active account has actually changed.
+            const done = status.logged_in &&
+                (!waitForEmailChangeFrom || status.email !== waitForEmailChangeFrom);
+
+            if (done) {
                 this.clearStatus();
                 this.updateUI(status);
             } else if (attempts < maxAttempts) {
@@ -243,14 +257,14 @@ GmailCleaner.Auth = {
                 if (attempts === 10) {
                     this.setStatus("Still waiting - check for a Google sign-in tab that may have opened (it can be hidden behind this window, or blocked as a pop-up).");
                 }
-                setTimeout(() => this.pollStatus(attempts + 1), 1000);
+                setTimeout(() => this.pollStatus(attempts + 1, waitForEmailChangeFrom), 1000);
             } else {
                 this.resetSignInButton();
                 GmailCleaner.UI.showErrorToast('Sign-in timed out after 2 minutes. If you closed the browser tab, wait a moment and try again.');
             }
         } catch (error) {
             console.error('Error polling auth status:', error);
-            setTimeout(() => this.pollStatus(attempts + 1), 1000);
+            setTimeout(() => this.pollStatus(attempts + 1, waitForEmailChangeFrom), 1000);
         }
     },
 
