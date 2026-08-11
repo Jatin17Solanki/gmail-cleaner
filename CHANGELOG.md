@@ -191,6 +191,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Fourth round: `batch_size=50` reduced but didn't eliminate the
+  "Too many concurrent requests" 429s.** A repeat scan at the new clamp
+  still showed 2 messages permanently failing with the identical error.
+  Root cause: Gmail's 50-concurrent-requests limit is per **account**, not
+  per application - anything else concurrently touching the same mailbox
+  (another device, another browser tab, background sync) shares the same
+  budget, invisibly to this app. Requesting exactly 50 left zero margin
+  for that. Reduced `MAX_CONCURRENT_BATCH_SIZE` from 50 to 25, and raised
+  `run_batched_gets`'s default `max_retry_passes` from 1 to 2 (3 total
+  attempts) as additional resilience against activity this app can't see
+  or control. New test `test_default_retries_twice_before_giving_up`;
+  existing `test_still_failing_after_retry_pass_reaches_callback_as_terminal_exception`
+  updated to pass `max_retry_passes=1` explicitly, since it's testing the
+  terminal-failure contract, not the new default's retry count
 - **Root cause of the third round's undercounting confirmed and fixed**,
   using evidence from the opt-in `QUOTA_TRACE_LOGGING` added to
   investigate it: the actual failures were real `HttpError 429`s reading

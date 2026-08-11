@@ -52,14 +52,20 @@ QUOTA_CAP_PER_MINUTE = 6000
 QUOTA_WINDOW_SECONDS = 60
 WARNING_USAGE_RATIO = 0.5
 
-# Gmail enforces a *separate* limit from the 6,000-units/minute budget: max
-# 50 concurrent requests per user (confirmed via Google's own error-handling
-# docs — a batch's sub-requests fire essentially simultaneously, so a
-# batch_size above this trips "Too many concurrent requests for user" 429s
-# regardless of how well-paced the per-minute unit total is). Enforced as a
-# hard clamp in run_batched_gets, not just a caller convention, since this
-# is exactly the kind of constraint a "quota awareness" module should own.
-MAX_CONCURRENT_BATCH_SIZE = 50
+# Gmail enforces a *separate* limit from the 6,000-units/minute budget:
+# max 50 concurrent requests per user (confirmed via Google's own
+# error-handling docs). Crucially, this is per *account*, not per
+# application — anything else concurrently touching the same mailbox
+# (another device, another browser tab, a phone app syncing in the
+# background) shares the same budget, invisibly to us. Manual testing
+# confirmed batch_size=50 (exactly at the documented ceiling) still
+# occasionally trips "Too many concurrent requests for user" — so this
+# stays well under 50 to leave headroom for concurrent activity we can't
+# see or control, not just because Google's stated number is 50. Enforced
+# as a hard clamp in run_batched_gets, not just a caller convention, since
+# this is exactly the kind of constraint a "quota awareness" module should
+# own.
+MAX_CONCURRENT_BATCH_SIZE = 25
 
 COST = {
     "messages.list": 5,
@@ -234,7 +240,7 @@ class QuotaTracker:
         cost_per_id: int,
         status_dict: Optional[dict] = None,
         batch_size: int = MAX_CONCURRENT_BATCH_SIZE,
-        max_retry_passes: int = 1,
+        max_retry_passes: int = 2,
         label: str = "",
     ) -> None:
         """Run `request_factory(id)` for every id in `ids` via Gmail batch requests.
@@ -358,7 +364,7 @@ def run_batched_gets(
     cost_per_id: int,
     status_dict: Optional[dict] = None,
     batch_size: int = MAX_CONCURRENT_BATCH_SIZE,
-    max_retry_passes: int = 1,
+    max_retry_passes: int = 2,
     label: str = "",
 ) -> None:
     _active_tracker().run_batched_gets(

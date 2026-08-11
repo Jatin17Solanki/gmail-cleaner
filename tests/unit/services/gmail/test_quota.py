@@ -281,10 +281,44 @@ class TestRunBatchedGets:
             calls.append((request_id, response, exception))
 
         tracker.run_batched_gets(
-            service, ["m1"], lambda mid: mid, callback, cost_per_id=20, batch_size=10
+            service,
+            ["m1"],
+            lambda mid: mid,
+            callback,
+            cost_per_id=20,
+            batch_size=10,
+            max_retry_passes=1,
         )
 
         assert calls == [("m1", None, second_error)]
+
+    def test_default_retries_twice_before_giving_up(self):
+        """Manual testing showed even a well-sized batch can occasionally
+        collide with concurrent activity from outside this app (another
+        device/tab sharing the same account's concurrent-request budget) —
+        one retry pass wasn't always enough margin, so the default is 2."""
+        clock, sleep = _fake_clock_and_sleep()
+        tracker = QuotaTracker(
+            cap=10_000, window_seconds=60, clock=clock, sleep_fn=sleep
+        )
+        responses = {
+            "m1": [
+                ("error", _http_error(429)),
+                ("error", _http_error(429)),
+                ("ok", {"id": "m1"}),
+            ]
+        }
+        service = _fake_batch_service(responses)
+        received: dict[str, tuple] = {}
+
+        def callback(request_id, response, exception):
+            received[request_id] = (response, exception)
+
+        tracker.run_batched_gets(
+            service, ["m1"], lambda mid: mid, callback, cost_per_id=20, batch_size=10
+        )
+
+        assert received["m1"] == ({"id": "m1"}, None)
 
 
 class TestPerAccountTrackerIsolation:
