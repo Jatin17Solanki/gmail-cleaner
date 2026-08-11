@@ -288,6 +288,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counter, proactive blocking before exceeding the limit, and reactive
   429 backoff. Deferred as its own piece of work rather than folded into
   this phase
+- **Distinct from the above, found during Phase 4a's PR review**: scan
+  undercounting/non-determinism also happens on very small scans, where
+  quota exhaustion can't be the cause. A sender with 2 real messages
+  showed only 1 on a Delete-tab scan; repeated scans (no restore or other
+  write action in between - ruled out by the human directly) caught a
+  different one of the 2 messages each time. `git diff main` confirmed
+  `scan_senders_for_delete()` (and the rest of `delete.py`'s scan/query
+  logic) is untouched by Phase 4a, so this predates that phase. Root
+  cause not confirmed - the leading theory is Gmail's search index
+  (`messages.list(q=...)`) not being strongly consistent even independent
+  of recent writes, but that's unverified. Documented per the human's
+  explicit direction rather than guess-fixed, since a wrong fix here
+  risks masking a real correctness issue rather than a cosmetic one
 
 ## [1.0.0] - 2024-11-29
 
