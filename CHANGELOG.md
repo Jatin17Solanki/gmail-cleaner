@@ -191,6 +191,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Fifth round: `batch_size=25` produced zero failure warnings, but the
+  final count (992) still didn't obviously reconcile against the
+  limit=1000 requested against a >1000-message inbox.** Hand-counting
+  individual chunk-fire trace lines to check for a gap turned out to be
+  unreliable (retried-then-succeeded messages fire extra trace lines with
+  no corresponding warning, inflating a manual count without indicating a
+  real problem) - added one authoritative summary line to
+  `run_batched_gets` instead (`requested=N succeeded=N failed=N`), so this
+  never needs hand-counting again. Building it surfaced (and fixed) a real
+  bug in the process: the summary's failure count only tracked messages
+  that exhausted retries (`len(pending)`), missing messages that failed
+  *immediately* as non-retryable (e.g. a genuine 403) - added a
+  `permanent_failures` counter incremented at both failure paths. Caught
+  by a new test (`test_logs_summary_line_with_requested_succeeded_failed_counts`)
+  before it ever shipped
 - **Fourth round: `batch_size=50` reduced but didn't eliminate the
   "Too many concurrent requests" 429s.** A repeat scan at the new clamp
   still showed 2 messages permanently failing with the identical error.

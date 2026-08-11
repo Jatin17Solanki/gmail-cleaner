@@ -320,6 +320,51 @@ class TestRunBatchedGets:
 
         assert received["m1"] == ({"id": "m1"}, None)
 
+    def test_logs_summary_line_with_requested_succeeded_failed_counts(self, caplog):
+        """Manual testing needed to hand-count individual chunk-fire trace
+        lines to check for a mismatch — this one authoritative line makes
+        that unnecessary.
+
+        _trace_logger has propagate=False by design (self-contained, not
+        duplicated by any other handler an app might configure), so caplog
+        must be attached to it directly rather than relying on the usual
+        root-logger propagation `at_level` depends on.
+        """
+        clock, sleep = _fake_clock_and_sleep()
+        tracker = QuotaTracker(
+            cap=10_000, window_seconds=60, clock=clock, sleep_fn=sleep
+        )
+        responses = {
+            "a": [("ok", {"id": "a"})],
+            "b": [("error", _http_error(403, reason="insufficientPermissions"))],
+        }
+        service = _fake_batch_service(responses)
+
+        trace_logger = quota_module._trace_logger
+        previous_level = trace_logger.level
+        trace_logger.addHandler(caplog.handler)
+        trace_logger.setLevel(logging.INFO)
+        try:
+            tracker.run_batched_gets(
+                service,
+                ["a", "b"],
+                lambda mid: mid,
+                lambda *args: None,
+                cost_per_id=10,
+                batch_size=10,
+            )
+        finally:
+            trace_logger.removeHandler(caplog.handler)
+            trace_logger.setLevel(previous_level)
+
+        summaries = [
+            r.getMessage() for r in caplog.records if "summary" in r.getMessage()
+        ]
+        assert len(summaries) == 1
+        assert "requested=2" in summaries[0]
+        assert "succeeded=1" in summaries[0]
+        assert "failed=1" in summaries[0]
+
 
 class TestPerAccountTrackerIsolation:
     """Gmail's 6,000/min cap is tracked per Google account, not per process

@@ -260,20 +260,24 @@ class QuotaTracker:
         # exists to handle gracefully. Applies to retry passes too, since
         # they reuse this same batch_size.
         batch_size = min(batch_size, MAX_CONCURRENT_BATCH_SIZE)
+        total_requested = len(ids)
         pending = list(ids)
         exceptions_by_id: dict[str, Exception] = {}
+        permanent_failures = 0
 
         for pass_num in range(max_retry_passes + 1):
             if not pending:
-                return
+                break
             retry_ids: list[str] = []
 
             def batch_callback(request_id, response, exception):
+                nonlocal permanent_failures
                 if exception is not None:
                     if _is_retryable_http_error(exception):
                         retry_ids.append(request_id)
                         exceptions_by_id[request_id] = exception
                         return
+                    permanent_failures += 1
                     logger.warning(
                         "Gmail request for message %s failed (non-retryable): %r",
                         request_id,
@@ -303,6 +307,7 @@ class QuotaTracker:
                 self._sleep(wait)
 
         for msg_id in pending:
+            permanent_failures += 1
             exc = exceptions_by_id.get(msg_id)
             logger.warning(
                 "Gmail request for message %s still failing after %d retry pass(es): %r",
@@ -311,6 +316,18 @@ class QuotaTracker:
                 exc,
             )
             callback(msg_id, None, exc)
+
+        # One authoritative summary line per run — requested vs. succeeded
+        # vs. permanently failed (both the immediate-non-retryable and the
+        # exhausted-retries paths) — so a mismatch can be confirmed or
+        # ruled out without hand-counting individual chunk-fire trace lines.
+        _trace_logger.info(
+            "run_batched_gets summary: requested=%d succeeded=%d failed=%d%s",
+            total_requested,
+            total_requested - permanent_failures,
+            permanent_failures,
+            f" ({label})" if label else "",
+        )
 
 
 # Gmail's 6,000-units/minute cap is tracked per Google account, not per
