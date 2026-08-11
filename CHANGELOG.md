@@ -181,6 +181,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- Second human manual-testing round on the Phase 4a2 PR: a scan with the
+  default limit (1000) went through several "approaching rate limit" wait
+  cycles and then failed with "Scan timed out" instead of completing.
+  Root cause: `senderList.js`'s `_pollScanStatus` (and the identical
+  pattern duplicated in `delete.js`'s download/bulk-delete pollers,
+  `markread.js`'s bulk mark-as-read poller, and `archive.js`'s archive
+  poller) gives up after `attempts > 600` polls at a 300ms interval -
+  exactly 180 seconds - regardless of whether the backend operation is
+  still legitimately running. A 1000-message scan from a cold quota budget
+  needs ~3 wait cycles (~180s) by design once quota-aware pacing (this
+  phase) replaces the old silent-drop behavior, and real network latency
+  for the underlying `list()`/`batch.execute()` calls pushes that past the
+  180s ceiling - so the UI gives up right around when the scan is
+  legitimately still finishing. Worse, since the scan runs as a FastAPI
+  background task, it keeps running server-side after the frontend gives
+  up and errors, so the completed results were silently discarded the next
+  time a scan was started. The UI's own limit dropdown already offers up
+  to "Scan 5000" (~17 minutes under the confirmed 6,000-units/minute cap),
+  so this wasn't specific to the 1000 case. Fixed by raising all five
+  pollers' ceiling to a generous 30-minute sanity bound (`maxAttempts =
+  6000`) rather than a tight estimate - precise per-scan time estimation
+  is deferred to a future phase (see PROGRESS.md's backlog)
 - Human manual-testing round on the Phase 4a2 PR: the quota tracker was a
   single global instance shared across every signed-in account, even
   though Gmail's 6,000-units/minute cap is tracked per Google account, not

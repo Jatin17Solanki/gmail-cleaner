@@ -98,7 +98,13 @@ class SenderListView {
     }
 
     async _pollScanStatus(progressText, attempts = 0) {
-        const maxAttempts = 600;
+        // Quota-aware scans (Phase 4a2) can legitimately pace themselves
+        // across several minutes for a large limit - a scan near the
+        // 5000-email preset needs roughly 17 minutes under Gmail's
+        // 6,000-units/minute cap. This is a generous sanity ceiling (30
+        // minutes), not a tight estimate - it exists to eventually catch a
+        // genuinely hung request, not to bound normal large scans.
+        const maxAttempts = 6000;
         const response = await fetch(this.scanStatusEndpoint);
         const status = await response.json();
 
