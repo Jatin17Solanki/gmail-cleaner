@@ -499,8 +499,14 @@ def _run_oauth_and_save_token(creds_path: str, add_new_account: bool = False) ->
         # up into per-account storage on the next successful profile call.
         email = None
         try:
+            from app.services.gmail import quota  # deferred: avoids a circular
+            # import, since app.services.gmail's package init imports from
+            # this module (get_gmail_service).
+
             temp_service = build("gmail", "v1", credentials=new_creds)
-            profile = temp_service.users().getProfile(userId="me").execute()
+            profile = quota.execute_with_backoff(
+                temp_service.users().getProfile(userId="me"), quota.COST["getProfile"]
+            )
             email = profile.get("emailAddress")
         except Exception as e:
             logger.warning(f"Could not determine account email after OAuth: {e}")
@@ -688,7 +694,11 @@ def get_gmail_service(add_new_account: bool = False):
         )
 
     try:
-        profile = service.users().getProfile(userId="me").execute()
+        from app.services.gmail import quota  # deferred: circular import
+
+        profile = quota.execute_with_backoff(
+            service.users().getProfile(userId="me"), quota.COST["getProfile"]
+        )
         email = profile.get("emailAddress", "Unknown")
         state.current_user["email"] = email
         state.current_user["logged_in"] = True
@@ -761,6 +771,8 @@ def switch_active_account(email: str) -> dict:
 
 def check_login_status() -> dict:
     """Check if the active account is logged in and get their email."""
+    from app.services.gmail import quota  # deferred: circular import
+
     token_path = accounts.resolve_active_token_path()
     if token_path and os.path.exists(token_path):
         # Check if token file is empty
@@ -777,11 +789,18 @@ def check_login_status() -> dict:
                 )
                 if creds and creds.valid:
                     service = build("gmail", "v1", credentials=creds)
-                    profile = service.users().getProfile(userId="me").execute()
+                    profile = quota.execute_with_backoff(
+                        service.users().getProfile(userId="me"),
+                        quota.COST["getProfile"],
+                    )
                     email = profile.get("emailAddress", "Unknown")
                     state.current_user["email"] = email
                     state.current_user["logged_in"] = True
-                    if email and email != "Unknown" and token_path == settings.token_file:
+                    if (
+                        email
+                        and email != "Unknown"
+                        and token_path == settings.token_file
+                    ):
                         accounts.migrate_legacy_token(email)
                         operation_log.backfill_account_email(email)
                     return state.current_user.copy()
@@ -789,7 +808,10 @@ def check_login_status() -> dict:
                     refreshed_creds = _try_refresh_creds(creds, token_path)
                     if refreshed_creds:
                         service = build("gmail", "v1", credentials=refreshed_creds)
-                        profile = service.users().getProfile(userId="me").execute()
+                        profile = quota.execute_with_backoff(
+                            service.users().getProfile(userId="me"),
+                            quota.COST["getProfile"],
+                        )
                         email = profile.get("emailAddress", "Unknown")
                         state.current_user["email"] = email
                         state.current_user["logged_in"] = True

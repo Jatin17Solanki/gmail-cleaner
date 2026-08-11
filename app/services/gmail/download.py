@@ -7,10 +7,10 @@ Functions for downloading email metadata as CSV.
 import base64
 import csv
 import io
-import time
 
 from app.core import state
 from app.services.auth import get_gmail_service
+from app.services.gmail import quota
 
 
 def download_emails_background(senders: list[str]) -> None:
@@ -81,68 +81,56 @@ def download_emails_background(senders: list[str]) -> None:
 
         return body.strip()
 
-    # Fetch full email content in batches
+    # Fetch full email content in batches. Already at Gmail's 50-concurrent-
+    # requests-per-user ceiling (quota.py's MAX_CONCURRENT_BATCH_SIZE) -
+    # run_batched_gets also clamps this defensively, kept explicit here since
+    # format="full" responses are heavier than the metadata scans use.
     email_data = []
-    batch_size = 50  # Smaller batches for full content
+    batch_size = quota.MAX_CONCURRENT_BATCH_SIZE
     fetched = 0
 
+    def process_message(request_id, response, exception) -> None:
+        nonlocal fetched
+        fetched += 1
+        state.download_status["fetched_count"] = fetched
+        state.download_status["progress"] = int((fetched / total_emails) * 95)
+        state.download_status["message"] = f"Fetched {fetched}/{total_emails} emails..."
+
+        if exception is not None or not response:
+            return
+
+        headers = {
+            h["name"]: h["value"]
+            for h in response.get("payload", {}).get("headers", [])
+        }
+        body = get_email_body(response.get("payload", {}))
+
+        email_data.append(
+            {
+                "message_id": response.get("id", ""),
+                "thread_id": response.get("threadId", ""),
+                "from": headers.get("From", ""),
+                "subject": headers.get("Subject", ""),
+                "date": headers.get("Date", ""),
+                "labels": ", ".join(response.get("labelIds", [])),
+                "snippet": response.get("snippet", "")[:100],
+                "body": body[:50000] if body else "",  # Limit to 50,000 characters
+            }
+        )
+
+    def build_get_request(msg_id: str):
+        return service.users().messages().get(userId="me", id=msg_id, format="full")
+
     try:
-        for i in range(0, total_emails, batch_size):
-            batch_ids = all_message_ids[i : i + batch_size]
-
-            batch = service.new_batch_http_request()
-            batch_results = []
-
-            def callback(
-                _request_id, response, exception, results=batch_results
-            ) -> None:
-                if exception is None and response:
-                    results.append(response)
-
-            for msg_id in batch_ids:
-                batch.add(
-                    service.users()
-                    .messages()
-                    .get(userId="me", id=msg_id, format="full"),
-                    callback=callback,
-                )
-
-            batch.execute()
-
-            # Process batch results
-            for msg in batch_results:
-                headers = {
-                    h["name"]: h["value"]
-                    for h in msg.get("payload", {}).get("headers", [])
-                }
-                body = get_email_body(msg.get("payload", {}))
-
-                email_data.append(
-                    {
-                        "message_id": msg.get("id", ""),
-                        "thread_id": msg.get("threadId", ""),
-                        "from": headers.get("From", ""),
-                        "subject": headers.get("Subject", ""),
-                        "date": headers.get("Date", ""),
-                        "labels": ", ".join(msg.get("labelIds", [])),
-                        "snippet": msg.get("snippet", "")[:100],
-                        "body": (
-                            body[:50000] if body else ""
-                        ),  # Limit to 50,000 characters
-                    }
-                )
-
-            fetched += len(batch_ids)
-            state.download_status["fetched_count"] = fetched
-            state.download_status["progress"] = int((fetched / total_emails) * 95)
-            state.download_status["message"] = (
-                f"Fetched {fetched}/{total_emails} emails..."
-            )
-
-            # Rate limiting: sleep every 5 batches to avoid hitting API limits
-            if (i // batch_size + 1) % 5 == 0:
-                time.sleep(0.3)
-
+        quota.run_batched_gets(
+            service,
+            all_message_ids,
+            build_get_request,
+            process_message,
+            quota.COST["messages.get"],
+            state.download_status,
+            batch_size=batch_size,
+        )
     except Exception as e:
         state.download_status["done"] = True
         state.download_status["error"] = f"Error fetching emails: {str(e)}"

@@ -10,6 +10,7 @@ operation regardless of what kind of action created the entry: call
 
 from app.services import accounts, operation_log
 from app.services.auth import get_gmail_service
+from app.services.gmail import quota
 
 
 def restore_operation(entry_id: str) -> dict:
@@ -23,7 +24,9 @@ def restore_operation(entry_id: str) -> dict:
     """
     # Scoped to the active account (Phase 4a) so this can never replay a
     # batchModify against message IDs that belong to a different mailbox.
-    entry = operation_log.find_entry(entry_id, account_email=accounts.get_active_account())
+    entry = operation_log.find_entry(
+        entry_id, account_email=accounts.get_active_account()
+    )
     if entry is None:
         return {"success": False, "restored": 0, "message": "Entry not found"}
 
@@ -45,7 +48,10 @@ def restore_operation(entry_id: str) -> dict:
         for i in range(0, len(message_ids), batch_size):
             batch = message_ids[i : i + batch_size]
             body = {**body_template, "ids": batch}
-            service.users().messages().batchModify(userId="me", body=body).execute()
+            quota.execute_with_backoff(
+                service.users().messages().batchModify(userId="me", body=body),
+                quota.COST["messages.batchModify"],
+            )
             restored += len(batch)
     except Exception as e:
         return {

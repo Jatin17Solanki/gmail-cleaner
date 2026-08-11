@@ -98,7 +98,10 @@ GmailCleaner.Delete = (() => {
         const status = await response.json();
         if (status.error) throw new Error(status.error);
         if (status.done) return;
-        if (attempts > 600) throw new Error('Download timed out');
+        // Generous sanity ceiling (30 min), not a tight estimate - quota
+        // pacing (Phase 4a2) means a large download can legitimately take
+        // several minutes. See senderList.js's _pollScanStatus for the math.
+        if (attempts > 6000) throw new Error('Download timed out');
         await new Promise(resolve => setTimeout(resolve, 300));
         return pollDownload(attempts + 1);
     }
@@ -131,7 +134,8 @@ GmailCleaner.Delete = (() => {
         const status = await response.json();
         if (status.error) throw new Error(status.error);
         if (status.done) return;
-        if (attempts > 600) throw new Error('Delete timed out');
+        // Generous sanity ceiling (30 min) - see pollDownload above.
+        if (attempts > 6000) throw new Error('Delete timed out');
         await new Promise(resolve => setTimeout(resolve, 300));
         return pollDeleteBulk(attempts + 1);
     }

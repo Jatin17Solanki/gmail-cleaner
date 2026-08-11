@@ -24,6 +24,24 @@ GmailCleaner.SenderList = {
         const view = new SenderListView(config);
         this.views[config.prefix] = view;
         return view;
+    },
+
+    // Turns a backend-computed estimated_seconds (Phase 4a2's
+    // quota.estimate_scan_seconds) into a human message with both a
+    // relative duration and an absolute "come back around" clock time,
+    // since a countdown alone doesn't tell you when to actually check back.
+    //
+    // readyAtMs, if given, is an already-fixed target timestamp (see
+    // SenderListView._pollScanStatus) - without it, this would recompute
+    // Date.now() + seconds on every call, and since this runs on every
+    // 300ms poll tick during an active scan, the displayed "come back
+    // around" time would keep creeping forward instead of staying fixed.
+    formatEta(seconds, readyAtMs = null) {
+        const minutes = Math.max(1, Math.round(seconds / 60));
+        const duration = minutes === 1 ? 'about a minute' : `about ${minutes} minutes`;
+        const readyAt = new Date(readyAtMs !== null ? readyAtMs : Date.now() + seconds * 1000);
+        const readyAtText = readyAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return `This scan will take ${duration} to complete — come back around ${readyAtText} to see results.`;
     }
 };
 
@@ -46,6 +64,7 @@ class SenderListView {
         this.expanded = new Set();
         this.litepicker = null;
         this.scanning = false;
+        this._scanReadyAtMs = null;
 
         this._initialEmptyHtml = null;
 
@@ -73,9 +92,13 @@ class SenderListView {
         const progress = this.id('ScanProgress');
         const progressText = this.id('ScanProgressText');
         const scanBtn = this.id('ScanBtn');
+        const eta = this.id('ScanEta');
+        const etaText = this.id('ScanEtaText');
         if (scanBtn) scanBtn.disabled = true;
         progress?.classList.remove('hidden');
         if (progressText) progressText.textContent = 'Scanning...';
+        eta?.classList.add('hidden');
+        this._scanReadyAtMs = null;
 
         try {
             await fetch(this.scanEndpoint, {
@@ -83,7 +106,7 @@ class SenderListView {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ limit, filters: this.filters })
             });
-            await this._pollScanStatus(progressText);
+            await this._pollScanStatus(progressText, 0, eta, etaText);
             const resultsResp = await fetch(this.scanResultsEndpoint);
             this.results = await resultsResp.json();
             this.render();
@@ -94,11 +117,19 @@ class SenderListView {
             this.scanning = false;
             if (scanBtn) scanBtn.disabled = false;
             progress?.classList.add('hidden');
+            eta?.classList.add('hidden');
+            this._scanReadyAtMs = null;
         }
     }
 
-    async _pollScanStatus(progressText, attempts = 0) {
-        const maxAttempts = 600;
+    async _pollScanStatus(progressText, attempts = 0, eta = null, etaText = null) {
+        // Quota-aware scans (Phase 4a2) can legitimately pace themselves
+        // across several minutes for a large limit - a scan near the
+        // 5000-email preset needs roughly 17 minutes under Gmail's
+        // 6,000-units/minute cap. This is a generous sanity ceiling (30
+        // minutes), not a tight estimate - it exists to eventually catch a
+        // genuinely hung request, not to bound normal large scans.
+        const maxAttempts = 6000;
         const response = await fetch(this.scanStatusEndpoint);
         const status = await response.json();
 
@@ -108,12 +139,31 @@ class SenderListView {
         if (progressText && status.message) {
             progressText.textContent = status.message;
         }
+        // Only worth surfacing a "come back later" message for a
+        // meaningfully long wait - a fast scan doesn't need it.
+        if (eta && etaText) {
+            if (status.estimated_seconds && status.estimated_seconds > 30) {
+                // Pin the target timestamp the first time it's shown for
+                // this scan - recomputing Date.now() + estimated_seconds on
+                // every 300ms poll tick would make the displayed time keep
+                // creeping forward instead of staying fixed.
+                if (this._scanReadyAtMs === null) {
+                    this._scanReadyAtMs = Date.now() + status.estimated_seconds * 1000;
+                }
+                etaText.textContent = GmailCleaner.SenderList.formatEta(
+                    status.estimated_seconds, this._scanReadyAtMs
+                );
+                eta.classList.remove('hidden');
+            } else {
+                eta.classList.add('hidden');
+            }
+        }
         if (status.done) return;
         if (attempts >= maxAttempts) {
             throw new Error('Scan timed out');
         }
         await new Promise(resolve => setTimeout(resolve, 300));
-        return this._pollScanStatus(progressText, attempts + 1);
+        return this._pollScanStatus(progressText, attempts + 1, eta, etaText);
     }
 
     // ----- Rendering -----

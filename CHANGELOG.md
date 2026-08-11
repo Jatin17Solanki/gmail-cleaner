@@ -139,6 +139,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     existing `data/` ignore rule doesn't cover - added explicit entries
     for both before opening this PR, per CLAUDE.md's requirement to
     re-check `.gitignore` on any auth-touching change.
+- Phase 4a2 (inserted before Phase 4b, per PRD Section 7): Gmail API quota
+  awareness. A default-sized scan (`limit=1000`) fetches per-message
+  metadata via `messages().get()` for every result - ~20,000 quota units in
+  a few seconds against Gmail's 6,000-units/minute/user cap, with zero
+  retry/backoff anywhere in the codebase. When Gmail started rate-limiting
+  a batch mid-scan, the affected messages were silently dropped
+  (`if exception: return`), producing incomplete, non-deterministic sender
+  counts with no indication anything went wrong.
+  - New `app/services/gmail/quota.py`: `QuotaTracker` tracks a rolling
+    60-second usage window (its own `threading.Lock`, since
+    `app.core.state` has no locking for a counter multiple background
+    tasks can hit concurrently). `gate()` proactively blocks before a call
+    would exceed the cap, surfacing a live "waiting Ns" message through
+    the same `status_dict["message"]` channel every scan already polls,
+    and logs a one-time warning past 50% usage (bug-detection aid, not a
+    UI counter, per PRD). `execute_with_backoff()` retries a single
+    `.execute()` call on a real 429 or quota-shaped 403 with exponential
+    backoff - first place in the repo importing
+    `googleapiclient.errors.HttpError`. `run_batched_gets()` replaces the
+    batch-of-`messages().get()` loop duplicated across the delete/archive/
+    mark-read scans and the CSV download - a sub-request that fails with a
+    429/quota-403 is now retried once (via `request_id`-tagged
+    `batch.add()`) instead of being dropped.
+  - Wired into all Gmail API call sites across `app/services/gmail/*.py`
+    and `auth.py`'s four `getProfile()` calls (function-local imports
+    there, to avoid a circular import with `app.services.gmail`'s package
+    `__init__.py`, which imports from `auth.py`). Removed the flat,
+    non-adaptive `time.sleep()` "rate limiting" placeholders real gating
+    now replaces.
+  - Cost table follows PRD Section 7's own figures where given
+    (`messages.list`=5, `messages.get`=20, `messages.batchModify`=50,
+    flat); `getProfile`/`labels.*` costs are a documented assumption
+    since the PRD doesn't price them and they're cheap/rare, not the
+    source of exhaustion.
+  - New opt-in `QUOTA_TRACE_LOGGING` env var (off by default, per PRD
+    Section 7's "silent by default" design) logs a timestamped line for
+    every Gmail API call the quota tracker charges - account, cost, and
+    cumulative usage at that moment - so scan pacing can be diagnosed
+    from server logs instead of manually counting "waiting Ns" messages in
+    the UI. Uses a dedicated, self-contained logger with its own handler
+    and formatter (`app/services/gmail/quota.py`'s `_trace_logger`), since
+    the app has no `logging.basicConfig` anywhere and a plain
+    `logger.info()` call would otherwise silently vanish (Python's
+    fallback handler only shows WARNING+).
+  - **Scan time estimate + quota explainer, requested by the human once
+    the quota-tracking investigation above was confirmed resolved** (this
+    was originally scoped as a deferred future-phase item - backlog item 8
+    - but the human asked for the time-estimate piece specifically to be
+    built now, in this same PR, since it directly explains the mechanism
+    this phase just built). New `quota.estimate_scan_seconds(message_count)`
+    computes a wall-clock estimate from the same cost model `gate()`
+    already enforces (empirically matched real scans to within ~5% during
+    this phase's investigation - see the confirmed-resolved entry above).
+    Wired into `scan_senders_for_delete`/`_for_archive`/`_for_markread` as
+    a new `estimated_seconds` field on each scan's status dict, set once
+    the true message count is known (post-`list()`, not a pre-scan guess
+    off the raw `limit`). Frontend (`senderList.js`) shows it as "This scan
+    will take about N minutes to complete — come back around H:MM to see
+    results" once a scan's estimate exceeds 30 seconds (not shown for fast
+    scans), with a Tabler `ti-info-circle` icon (native `title` tooltip,
+    matching the existing tooltip pattern used elsewhere in this app - no
+    new tooltip component introduced) explaining the underlying Gmail
+    quota math with a concrete example. The same icon/tooltip is also
+    placed persistently next to the scan controls (not just tied to an
+    active scan), per explicit request to "communicate as much as
+    possible." Shared across Delete/Archive/Mark-as-read since all three
+    use the same `sender_view` Jinja macro. New tests
+    `TestEstimateScanSeconds`.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases
@@ -147,6 +215,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Scan ETA message kept creeping forward instead of staying fixed.**
+  Found by the human immediately after the scan time estimate feature
+  shipped: `senderList.js`'s `formatEta()` computed
+  `Date.now() + estimated_seconds` fresh on every call, and since the
+  status-polling loop calls it on every 300ms tick throughout an active
+  scan, the displayed "come back around H:MM" time kept sliding forward
+  in step with real time instead of staying pinned to when the scan
+  actually started. Fixed by capturing the target timestamp once (on
+  `SenderListView._scanReadyAtMs`, set the first time the ETA is shown for
+  a given scan) and reusing that fixed value for every subsequent poll
+  tick's render, reset back to `null` at the start/end of each scan.
+  `formatEta()` now accepts an optional pinned `readyAtMs` instead of
+  always recomputing from "now". No JS test harness exists in this repo
+  (known gap - see `PROGRESS.md` backlog item 3), so verified with a
+  standalone Node simulation of multiple poll ticks confirming the
+  displayed time no longer moves
+- **Confirmed resolved (sixth round)**: rerunning the same limit=1000 scan
+  against the >1000-message inbox that originally showed 837/1000 counted
+  now shows `run_batched_gets summary: requested=1000 succeeded=1000
+  failed=0` - zero loss, exact match, verified with real evidence rather
+  than unit tests alone. Closes the multi-round investigation into scans
+  silently under-reporting; root cause was Gmail's 50-concurrent-requests-
+  per-account limit (see the two rounds below), a separate constraint from
+  the 6,000-units/minute budget this phase was originally built around.
+- **Fifth round: `batch_size=25` produced zero failure warnings, but the
+  final count (992) still didn't obviously reconcile against the
+  limit=1000 requested against a >1000-message inbox.** Hand-counting
+  individual chunk-fire trace lines to check for a gap turned out to be
+  unreliable (retried-then-succeeded messages fire extra trace lines with
+  no corresponding warning, inflating a manual count without indicating a
+  real problem) - added one authoritative summary line to
+  `run_batched_gets` instead (`requested=N succeeded=N failed=N`), so this
+  never needs hand-counting again. Building it surfaced (and fixed) a real
+  bug in the process: the summary's failure count only tracked messages
+  that exhausted retries (`len(pending)`), missing messages that failed
+  *immediately* as non-retryable (e.g. a genuine 403) - added a
+  `permanent_failures` counter incremented at both failure paths. Caught
+  by a new test (`test_logs_summary_line_with_requested_succeeded_failed_counts`)
+  before it ever shipped
+- **Fourth round: `batch_size=50` reduced but didn't eliminate the
+  "Too many concurrent requests" 429s.** A repeat scan at the new clamp
+  still showed 2 messages permanently failing with the identical error.
+  Root cause: Gmail's 50-concurrent-requests limit is per **account**, not
+  per application - anything else concurrently touching the same mailbox
+  (another device, another browser tab, background sync) shares the same
+  budget, invisibly to this app. Requesting exactly 50 left zero margin
+  for that. Reduced `MAX_CONCURRENT_BATCH_SIZE` from 50 to 25, and raised
+  `run_batched_gets`'s default `max_retry_passes` from 1 to 2 (3 total
+  attempts) as additional resilience against activity this app can't see
+  or control. New test `test_default_retries_twice_before_giving_up`;
+  existing `test_still_failing_after_retry_pass_reaches_callback_as_terminal_exception`
+  updated to pass `max_retry_passes=1` explicitly, since it's testing the
+  terminal-failure contract, not the new default's retry count
+- **Root cause of the third round's undercounting confirmed and fixed**,
+  using evidence from the opt-in `QUOTA_TRACE_LOGGING` added to
+  investigate it: the actual failures were real `HttpError 429`s reading
+  `"Too many concurrent requests for user."` (`reason: rateLimitExceeded`)
+  - **not** the 6,000-units/minute budget the previous round's fix
+  targeted. Gmail enforces a *separate* limit, confirmed via Google's own
+  error-handling docs: max 50 concurrent requests per user, independent of
+  total unit cost. `run_batched_gets`'s `batch_size = 100` (inherited
+  unchanged from the pre-Phase-4a2 code) fires 100 sub-requests
+  essentially simultaneously per batch - double that ceiling - so both the
+  original attempt and its retry (which reuses the same batch_size) hit
+  the same wall, explaining why messages survived a retry pass and were
+  still dropped. This was almost certainly a contributing cause of scan
+  undercounting long before this phase existed, just never diagnosable
+  without the logging this phase added. Fixed by clamping `batch_size` to
+  a new `MAX_CONCURRENT_BATCH_SIZE = 50` constant - enforced as a hard
+  clamp inside `run_batched_gets` itself (not just a caller convention),
+  and the delete/archive/mark-read scan functions' local `batch_size`
+  values updated to match explicitly. `download.py`'s existing
+  `batch_size = 50` already happened to sit at the ceiling; now references
+  the shared constant instead of a coincidental magic number. New test
+  `TestRunBatchedGetsConcurrencyClamp` proves the clamp holds even if a
+  caller asks for more
+- Third human manual-testing round on the Phase 4a2 PR: after the timeout
+  fix below, a limit=1000 scan against a ~1800-email inbox completed but
+  only counted 837 of the 1000 fetched messages (6 wait cycles totaling
+  ~4 minutes - more than the clean per-minute-budget math alone predicts).
+  Root cause turned out to be the concurrent-request limit above, not the
+  two things fixed while investigating (both real, independently
+  justified improvements, kept regardless): (1) `run_batched_gets` had
+  zero logging when a message permanently failed - added
+  `logger.warning()` for both the immediate-non-retryable case and the
+  exhausted-retries case; (2) `_is_retryable_http_error` only retried
+  429/quota-403 - broadened to include Gmail's transient 5xx statuses
+  (500/502/503/504, standard practice per Google's API client guidance).
+  New test `test_transient_5xx_retries_then_succeeds`
+- Second human manual-testing round on the Phase 4a2 PR: a scan with the
+  default limit (1000) went through several "approaching rate limit" wait
+  cycles and then failed with "Scan timed out" instead of completing.
+  Root cause: `senderList.js`'s `_pollScanStatus` (and the identical
+  pattern duplicated in `delete.js`'s download/bulk-delete pollers,
+  `markread.js`'s bulk mark-as-read poller, and `archive.js`'s archive
+  poller) gives up after `attempts > 600` polls at a 300ms interval -
+  exactly 180 seconds - regardless of whether the backend operation is
+  still legitimately running. A 1000-message scan from a cold quota budget
+  needs ~3 wait cycles (~180s) by design once quota-aware pacing (this
+  phase) replaces the old silent-drop behavior, and real network latency
+  for the underlying `list()`/`batch.execute()` calls pushes that past the
+  180s ceiling - so the UI gives up right around when the scan is
+  legitimately still finishing. Worse, since the scan runs as a FastAPI
+  background task, it keeps running server-side after the frontend gives
+  up and errors, so the completed results were silently discarded the next
+  time a scan was started. The UI's own limit dropdown already offers up
+  to "Scan 5000" (~17 minutes under the confirmed 6,000-units/minute cap),
+  so this wasn't specific to the 1000 case. Fixed by raising all five
+  pollers' ceiling to a generous 30-minute sanity bound (`maxAttempts =
+  6000`) rather than a tight estimate - precise per-scan time estimation
+  is deferred to a future phase (see PROGRESS.md's backlog)
+- Human manual-testing round on the Phase 4a2 PR: the quota tracker was a
+  single global instance shared across every signed-in account, even
+  though Gmail's 6,000-units/minute cap is tracked per Google account, not
+  per process. Switching accounts (Phase 4a's multi-account switcher) made
+  the newly-active account inherit whatever quota usage the previously-
+  active account had just run up - reproduced by scanning account 2, then
+  immediately hitting a false "approaching rate limit" block on switching
+  to account 1, with the displayed wait time jumping unpredictably (each
+  scan batch racing against the other account's leftover usage in the same
+  shared window). Fixed by keying `QuotaTracker` instances per account
+  email (`app/services/gmail/quota.py`'s `_tracker_for_account()`,
+  resolved via `accounts.get_active_account()`) instead of one process-wide
+  singleton - every call site already goes through the module-level
+  `gate()`/`execute_with_backoff()`/`run_batched_gets()` wrappers, so no
+  call-site changes were needed, just the routing underneath them
 - Human manual-testing round on the Phase 4a PR: the topbar account chip
   stayed on the previous account's email after "Add another account"
   completed (the dropdown showed the new account checkmarked correctly,
@@ -277,17 +471,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now show as a toast instead of a blocking `alert()`
 
 ### Known issue (documented, not fixed in this round)
-- Scanning with a large limit (e.g. 5000) can return different results on
-  repeated runs with identical filters. Root cause: Gmail API quota
-  exhaustion - `messages.get()` costs 20 quota units and a 5000-email scan
-  can issue up to 100,000 units of calls against a 6,000/minute/user limit,
-  with no retry/backoff anywhere in the codebase, so which specific
-  requests get rate-limited (and silently dropped from the count) varies
-  run to run. Fixing this properly means building the quota-awareness
-  system already specified in the PRD (Section 7): a rolling 60s usage
-  counter, proactive blocking before exceeding the limit, and reactive
-  429 backoff. Deferred as its own piece of work rather than folded into
-  this phase
+- **RESOLVED by Phase 4a2** (pending that phase's PR merge - see `### Added`
+  above). Scanning with a large limit (e.g. 5000) could return different
+  results on repeated runs with identical filters, due to Gmail API quota
+  exhaustion with no retry/backoff anywhere in the codebase. Kept here for
+  history/context.
 - **Distinct from the above, found during Phase 4a's PR review**: scan
   undercounting/non-determinism also happens on very small scans, where
   quota exhaustion can't be the cause. A sender with 2 real messages

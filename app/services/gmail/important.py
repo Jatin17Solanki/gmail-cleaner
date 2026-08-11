@@ -4,11 +4,11 @@ Gmail Mark Important Operations
 Functions for marking/unmarking emails as important.
 """
 
-import time
 from typing import Optional
 
 from app.core import state
 from app.services.auth import get_gmail_service
+from app.services.gmail import quota
 from app.services.gmail.helpers import build_gmail_query
 
 
@@ -61,11 +61,12 @@ def mark_important_background(
             page_token = None
 
             while True:
-                result = (
+                result = quota.execute_with_backoff(
                     service.users()
                     .messages()
-                    .list(userId="me", q=query, maxResults=500, pageToken=page_token)
-                    .execute()
+                    .list(userId="me", q=query, maxResults=500, pageToken=page_token),
+                    quota.COST["messages.list"],
+                    state.important_status,
                 )
 
                 messages = result.get("messages", [])
@@ -87,12 +88,12 @@ def mark_important_background(
                     if important
                     else {"ids": batch_ids, "removeLabelIds": ["IMPORTANT"]}
                 )
-                service.users().messages().batchModify(userId="me", body=body).execute()
+                quota.execute_with_backoff(
+                    service.users().messages().batchModify(userId="me", body=body),
+                    quota.COST["messages.batchModify"],
+                    state.important_status,
+                )
                 total_affected += len(batch_ids)
-
-                # Throttle every 500 emails (use cumulative count across all senders)
-                if total_affected > 0 and total_affected % 500 == 0:
-                    time.sleep(0.5)
 
         state.important_status["progress"] = 100
         state.important_status["done"] = True

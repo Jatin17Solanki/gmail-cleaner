@@ -63,7 +63,11 @@ GmailCleaner.MarkRead = (() => {
         const status = await response.json();
         if (status.error) throw new Error(status.error);
         if (status.done) return;
-        if (attempts > 600) throw new Error('Mark-as-read timed out');
+        // Generous sanity ceiling (30 min), not a tight estimate - quota
+        // pacing (Phase 4a2) means a large mark-as-read run can legitimately
+        // take several minutes. See senderList.js's _pollScanStatus for the
+        // math.
+        if (attempts > 6000) throw new Error('Mark-as-read timed out');
         await new Promise(resolve => setTimeout(resolve, 300));
         return pollMarkRead(attempts + 1);
     }

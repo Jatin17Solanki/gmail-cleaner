@@ -44,7 +44,20 @@ class Settings(BaseSettings):
         ),
     )
 
-    @field_validator("web_auth", mode="before")
+    # Gmail API quota tracing (Phase 4a2 debugging aid). Off by default —
+    # PRD Section 7 wants quota tracking silent by default, this is purely
+    # for diagnosing scan pacing when investigating a specific issue.
+    quota_trace_logging: bool = Field(
+        default=False,
+        description=(
+            "Log a timestamped line for every Gmail API call the quota "
+            "tracker charges (env: QUOTA_TRACE_LOGGING) — lets you see "
+            "exactly when each call fired and the cumulative usage at that "
+            "moment, instead of inferring wait cycles from the UI."
+        ),
+    )
+
+    @field_validator("web_auth", "quota_trace_logging", mode="before")
     @classmethod
     def validate_web_auth(cls, v) -> bool:
         """Convert string environment variable to boolean (case-insensitive)."""
