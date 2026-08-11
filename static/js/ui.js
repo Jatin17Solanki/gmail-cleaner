@@ -4,9 +4,10 @@
 
 window.GmailCleaner = window.GmailCleaner || {};
 
-// Views that scan Gmail using the shared filter bar's criteria. Restore
-// (and any future non-scanning view) has no use for it.
-const FILTER_ENABLED_VIEWS = ['unsubscribe', 'delete', 'markread'];
+// Views that scan Gmail using the shared filter bar's criteria. Mark as
+// Read never surfaced meaningful use for it in practice (human feedback);
+// Restore (and any future non-scanning view) has no use for it either.
+const FILTER_ENABLED_VIEWS = ['unsubscribe', 'delete'];
 
 GmailCleaner.UI = {
     setupNavigation() {

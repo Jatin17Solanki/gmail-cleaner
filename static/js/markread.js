@@ -35,8 +35,6 @@ GmailCleaner.MarkRead = {
             count = parseInt(count);
         }
 
-        const filters = GmailCleaner.Filters.get();
-
         btn.disabled = true;
         btn.innerHTML = `
             <svg class="spinner" viewBox="0 0 24 24" width="18" height="18">
@@ -52,7 +50,7 @@ GmailCleaner.MarkRead = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     count,
-                    filters: filters
+                    filters: null
                 })
             });
             this.pollProgress();
@@ -82,7 +80,7 @@ GmailCleaner.MarkRead = {
                             `Successfully marked ${status.marked_count.toLocaleString()} emails as read. Your inbox is cleaner now!`
                         );
                     } else {
-                        GmailCleaner.UI.showInfoToast('No unread emails found matching the selected filters.');
+                        GmailCleaner.UI.showInfoToast('No unread emails found.');
                     }
                     this.refreshUnreadCount();
                 } else {
