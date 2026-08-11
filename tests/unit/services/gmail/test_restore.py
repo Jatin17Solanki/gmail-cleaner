@@ -7,7 +7,7 @@ with addLabelIds/removeLabelIds swapped from what the original action used.
 
 from unittest.mock import MagicMock, patch
 
-from app.services import operation_log
+from app.services import accounts, operation_log
 from app.services.gmail.restore import restore_operation
 
 
@@ -98,3 +98,40 @@ class TestRestoreOperation:
 
         assert result["success"] is False
         assert result["message"] == "Not authenticated"
+
+
+class TestRestoreAccountScoping:
+    """Phase 4a: restore must never replay a batchModify against message IDs
+    that belong to a different mailbox than the one currently active."""
+
+    @patch("app.services.gmail.restore.get_gmail_service")
+    def test_restore_blocked_for_entry_belonging_to_a_different_account(
+        self, mock_get_service
+    ):
+        accounts.register_account("active@example.com")
+        accounts.set_active_account("active@example.com")
+        entry = operation_log.append_entry(
+            "delete", ["m1"], ["TRASH"], [], {}, account_email="other@example.com"
+        )
+
+        result = restore_operation(entry["id"])
+
+        assert result["success"] is False
+        assert result["message"] == "Entry not found"
+        mock_get_service.assert_not_called()
+
+    @patch("app.services.gmail.restore.get_gmail_service")
+    def test_restore_succeeds_for_entry_belonging_to_the_active_account(
+        self, mock_get_service
+    ):
+        accounts.register_account("active@example.com")
+        accounts.set_active_account("active@example.com")
+        service = _mock_service()
+        mock_get_service.return_value = (service, None)
+        entry = operation_log.append_entry(
+            "delete", ["m1"], ["TRASH"], [], {}, account_email="active@example.com"
+        )
+
+        result = restore_operation(entry["id"])
+
+        assert result["success"] is True

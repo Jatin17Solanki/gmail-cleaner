@@ -98,6 +98,7 @@ def append_entry(
     removed_labels: list[str],
     summary: Optional[dict] = None,
     source: str = "manual",
+    account_email: Optional[str] = None,
 ) -> dict:
     """Record a completed action so it can be restored later.
 
@@ -110,6 +111,10 @@ def append_entry(
         summary: Small dict of display data (e.g. senders, label_name) so
             the API layer doesn't need to re-derive it.
         source: "manual" or, once Routines exist, a routine name.
+        account_email: Which Gmail account this action ran against (Phase
+            4a) - lets Restore scope itself to the active account so it
+            never replays a batchModify against message IDs that belong to
+            a different mailbox.
     """
     entry = {
         "id": uuid.uuid4().hex,
@@ -120,6 +125,7 @@ def append_entry(
         "added_labels": added_labels,
         "removed_labels": removed_labels,
         "summary": summary or {},
+        "account_email": account_email,
     }
     with _log_lock:
         entries = _prune(_load_entries_unlocked())
@@ -128,20 +134,47 @@ def append_entry(
     return entry
 
 
-def list_entries() -> list[dict]:
-    """Return non-expired entries, most recent first."""
+def list_entries(account_email: Optional[str] = None) -> list[dict]:
+    """Return non-expired entries, most recent first.
+
+    Args:
+        account_email: If given, only entries tagged with this account are
+            returned. Entries with no account tag at all (pre-Phase-4a,
+            never backfilled) are only included when account_email is None,
+            since we can't be sure which account they belong to.
+    """
     with _log_lock:
         entries = _prune(_load_entries_unlocked())
         _save_entries_unlocked(entries)
+    if account_email is not None:
+        entries = [e for e in entries if e.get("account_email") == account_email]
     return sorted(entries, key=lambda e: e["timestamp"], reverse=True)
 
 
-def find_entry(entry_id: str) -> Optional[dict]:
-    """Read-only lookup of a single entry, or None if missing/expired."""
-    for entry in list_entries():
+def find_entry(entry_id: str, account_email: Optional[str] = None) -> Optional[dict]:
+    """Read-only lookup of a single entry, or None if missing/expired/wrong account."""
+    for entry in list_entries(account_email=account_email):
         if entry["id"] == entry_id:
             return entry
     return None
+
+
+def backfill_account_email(email: str) -> None:
+    """Tag pre-Phase-4a entries (no account_email) with `email`.
+
+    Called once, alongside legacy token migration - at the time those
+    entries were written this app only ever supported one account, so
+    they're unambiguously this one.
+    """
+    with _log_lock:
+        entries = _load_entries_unlocked()
+        changed = False
+        for entry in entries:
+            if not entry.get("account_email"):
+                entry["account_email"] = email
+                changed = True
+        if changed:
+            _save_entries_unlocked(entries)
 
 
 def remove_entry(entry_id: str) -> Optional[dict]:

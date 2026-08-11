@@ -282,6 +282,7 @@ def _apply_label_operation_background(
             added_labels=[label_id] if add_label else [],
             removed_labels=[] if add_label else [label_id],
             summary={"senders": senders, "label_name": label_name},
+            account_email=state.current_user.get("email"),
         )
 
     # Done

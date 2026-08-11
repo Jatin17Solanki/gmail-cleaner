@@ -278,3 +278,23 @@ class RestoreResponse(BaseModel):
     success: bool
     restored: int = 0
     message: Optional[str] = None
+
+
+class AccountInfo(BaseModel):
+    """A Gmail account authorized against this instance (Phase 4a)."""
+
+    email: str
+    active: bool
+
+
+class SwitchAccountRequest(BaseModel):
+    """Body for POST /api/accounts/switch."""
+
+    email: str
+
+
+class SwitchAccountResponse(BaseModel):
+    """Switch-account action response."""
+
+    success: bool
+    message: Optional[str] = None

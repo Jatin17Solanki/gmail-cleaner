@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter
 
 from app.models import OperationLogEntry, RestoreResponse
-from app.services import operation_log, restore_operation
+from app.services import accounts, operation_log, restore_operation
 
 router = APIRouter(prefix="/api", tags=["Restore"])
 logger = logging.getLogger(__name__)
@@ -30,8 +30,9 @@ def _to_entry_model(entry: dict) -> OperationLogEntry:
 
 @router.get("/restore")
 async def api_list_restorable() -> list[OperationLogEntry]:
-    """List restorable operation-log entries from the last 30 days."""
-    entries = operation_log.list_entries()
+    """List restorable operation-log entries from the last 30 days, scoped
+    to the active account (Phase 4a)."""
+    entries = operation_log.list_entries(account_email=accounts.get_active_account())
     return [_to_entry_model(entry) for entry in entries]
 
 

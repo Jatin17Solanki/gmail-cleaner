@@ -273,6 +273,7 @@ def mark_emails_as_read_bulk_background(
                 added_labels=[],
                 removed_labels=["UNREAD"],
                 summary={"senders": senders},
+                account_email=state.current_user.get("email"),
             )
         # Remove fully-marked senders from the cached scan results, same
         # pattern delete/archive use for their scan results.

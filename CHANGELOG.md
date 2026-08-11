@@ -91,6 +91,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     as a bulk icon button in the Delete view's bottom actions bar - the
     closest existing behavior, since it already operated on a multi-
     sender selection.
+- Phase 4a: multi-account switcher. Multiple Gmail accounts can be
+  authorized against the same running instance, with one active at a time
+  (not a merged view) and no re-authentication needed to switch between
+  already-authorized accounts.
+  - New `app/services/accounts.py`: tokens are now stored per account at
+    `<data dir>/tokens/<email>.json`, keyed by the account's own email
+    address, with a small `accounts.json` index tracking the registered
+    account list and which one is active - replacing the single shared
+    `token.json` this app previously assumed. A one-time migration moves
+    an existing pre-4a `token.json` into this layout the next time its
+    account's email is confirmed via a Gmail profile call (same call
+    `get_gmail_service()`/`check_login_status()` already made), so
+    upgrading needs no manual steps.
+  - `get_gmail_service()` gained an `add_new_account` flag: the normal
+    sign-in path resolves and uses the active account's stored token as
+    before, but "Add another account" (`add_new_account=True`) always
+    forces a fresh OAuth consent screen and saves the result under a new
+    email-keyed slot, never touching whichever account was already active.
+  - New `switch_active_account()` flips the active-account pointer (no
+    re-auth) and clears all per-account scan/result state - the same
+    reset `sign_out()` already did, now shared via
+    `_reset_account_scoped_state()` since switching accounts needs it too.
+  - `sign_out()` now removes only the active account's token; if other
+    accounts remain registered, one becomes active automatically instead
+    of the whole instance logging out.
+  - **Operation log / Restore is now scoped per account** (decided
+    explicitly for this phase, see PROGRESS.md's Phase 3 backlog): every
+    `operation_log.append_entry()` call site now tags its entry with
+    `state.current_user`'s email, `list_entries()`/`find_entry()` accept an
+    `account_email` filter, and `restore_operation()` resolves the active
+    account before looking up an entry - so restoring can never replay a
+    `batchModify` against message IDs that belong to a different mailbox.
+    Pre-4a entries with no account tag are backfilled with the migrated
+    account's email at the same time its legacy token is migrated, and
+    remain visible (unscoped) until that happens.
+  - New `app/api/accounts.py`: `GET /api/accounts` (list + active flag),
+    `POST /api/accounts/switch`, `POST /api/accounts/add`.
+  - Frontend: the topbar's account slot (reserved by Phase 3, previously
+    just an email + "Sign out" button) is now the wireframe's account
+    switcher dropdown - active account with a checkmark, other accounts to
+    switch to, "Add another account," and Sign out, closing on
+    click-outside/Escape like the existing filter drawer.
+  - **`.gitignore` gap fixed as part of this phase**: the new `tokens/`
+    directory and `accounts.json` land at the repo root (sibling to the
+    legacy `token.json`) in the local non-Docker layout, which the
+    existing `data/` ignore rule doesn't cover - added explicit entries
+    for both before opening this PR, per CLAUDE.md's requirement to
+    re-check `.gitignore` on any auth-touching change.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases
@@ -99,6 +147,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- Human manual-testing round on the Phase 4a PR: the topbar account chip
+  stayed on the previous account's email after "Add another account"
+  completed (the dropdown showed the new account checkmarked correctly,
+  since it re-fetches `GET /api/accounts` fresh each time it's opened).
+  Root cause: `pollStatus()` resolved as soon as `/api/auth-status`
+  reported `logged_in: true`, but for this flow the *previous* account
+  stays validly signed in the entire time the new consent screen is open
+  in the browser - the very first poll already satisfied that condition
+  with the old email, so the UI locked in there and never re-checked once
+  the new account actually became active in the background. Fixed by
+  having `pollStatus()` optionally wait for the active account's email to
+  actually change, not just for `logged_in` to be true.
 - Phase 3 manual testing against a real inbox (not synthetic data - just
   browsing, no destructive actions taken) surfaced a subject line
   containing literal `"` characters (e.g. `"the doom of ai has started"`)
@@ -228,6 +288,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counter, proactive blocking before exceeding the limit, and reactive
   429 backoff. Deferred as its own piece of work rather than folded into
   this phase
+- **Distinct from the above, found during Phase 4a's PR review**: scan
+  undercounting/non-determinism also happens on very small scans, where
+  quota exhaustion can't be the cause. A sender with 2 real messages
+  showed only 1 on a Delete-tab scan; repeated scans (no restore or other
+  write action in between - ruled out by the human directly) caught a
+  different one of the 2 messages each time. `git diff main` confirmed
+  `scan_senders_for_delete()` (and the rest of `delete.py`'s scan/query
+  logic) is untouched by Phase 4a, so this predates that phase. Root
+  cause not confirmed - the leading theory is Gmail's search index
+  (`messages.list(q=...)`) not being strongly consistent even independent
+  of recent writes, but that's unverified. Documented per the human's
+  explicit direction rather than guess-fixed, since a wrong fix here
+  risks masking a real correctness issue rather than a cosmetic one
 
 ## [1.0.0] - 2024-11-29
 

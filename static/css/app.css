@@ -117,17 +117,89 @@ body {
   color: var(--text-secondary);
 }
 
-.account-slot .account-email {
+/* ----- Account switcher (Phase 4a) ----- */
+
+.account-switcher {
+  position: relative;
+}
+
+.account-trigger {
   display: flex;
   align-items: center;
   gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 6px 10px;
+  background: none;
+  cursor: pointer;
 }
 
-.account-slot .account-email i {
+.account-trigger i.ti-user-circle {
   color: var(--accent);
+}
+
+.account-trigger i.ti-chevron-down {
+  margin-left: 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 240px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(41, 33, 21, 0.14);
+  z-index: 30;
+  overflow: hidden;
+}
+
+.account-dropdown.hidden {
+  display: none;
+}
+
+.account-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-top: 1px solid var(--border);
+}
+
+.account-dropdown-item:first-child {
+  border-top: none;
+}
+
+.account-dropdown-item:hover {
+  background: var(--bg-surface-alt);
+}
+
+.account-dropdown-item.active {
+  color: var(--accent-text);
+  background: var(--accent-bg);
+  cursor: default;
+}
+
+.account-dropdown-item.add-account {
+  color: var(--accent-text);
+}
+
+.account-dropdown-item.sign-out {
+  color: var(--danger-text);
+}
+
+.account-dropdown-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ----- View shell ----- */

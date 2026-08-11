@@ -143,6 +143,107 @@ class TestRemoveEntry:
         assert len(operation_log.list_entries()) == 1
 
 
+class TestAccountScoping:
+    """Phase 4a: entries can be tagged/filtered by which account they ran against."""
+
+    def test_append_stores_account_email(self):
+        entry = operation_log.append_entry(
+            "delete", ["m1"], ["TRASH"], [], {}, account_email="a@example.com"
+        )
+        assert entry["account_email"] == "a@example.com"
+
+    def test_append_without_account_email_defaults_to_none(self):
+        entry = operation_log.append_entry("delete", ["m1"], ["TRASH"], [], {})
+        assert entry["account_email"] is None
+
+    def test_list_filters_by_account_email(self):
+        operation_log.append_entry(
+            "delete", ["m1"], ["TRASH"], [], {}, account_email="a@example.com"
+        )
+        operation_log.append_entry(
+            "archive", ["m2"], [], ["INBOX"], {}, account_email="b@example.com"
+        )
+
+        result = operation_log.list_entries(account_email="a@example.com")
+
+        assert len(result) == 1
+        assert result[0]["account_email"] == "a@example.com"
+
+    def test_list_without_account_filter_returns_everything(self):
+        operation_log.append_entry(
+            "delete", ["m1"], ["TRASH"], [], {}, account_email="a@example.com"
+        )
+        operation_log.append_entry(
+            "archive", ["m2"], [], ["INBOX"], {}, account_email="b@example.com"
+        )
+
+        assert len(operation_log.list_entries()) == 2
+
+    def test_list_excludes_untagged_legacy_entries_when_filtering(self):
+        _write_raw_entries(
+            [
+                {
+                    "id": "legacy-entry",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "action_type": "delete",
+                    "source": "manual",
+                    "message_ids": ["m1"],
+                    "added_labels": ["TRASH"],
+                    "removed_labels": [],
+                    "summary": {},
+                    # no account_email key at all - pre-Phase-4a entry
+                }
+            ]
+        )
+
+        assert operation_log.list_entries(account_email="a@example.com") == []
+        assert len(operation_log.list_entries()) == 1
+
+    def test_find_entry_scoped_to_account_returns_none_for_other_account(self):
+        entry = operation_log.append_entry(
+            "delete", ["m1"], ["TRASH"], [], {}, account_email="a@example.com"
+        )
+
+        assert (
+            operation_log.find_entry(entry["id"], account_email="b@example.com")
+            is None
+        )
+        assert (
+            operation_log.find_entry(entry["id"], account_email="a@example.com")
+            is not None
+        )
+
+
+class TestBackfillAccountEmail:
+    def test_backfill_tags_untagged_entries(self):
+        operation_log.append_entry("delete", ["m1"], ["TRASH"], [], {})
+        operation_log.append_entry("archive", ["m2"], [], ["INBOX"], {})
+
+        operation_log.backfill_account_email("legacy@example.com")
+
+        entries = operation_log.list_entries(account_email="legacy@example.com")
+        assert len(entries) == 2
+
+    def test_backfill_does_not_overwrite_already_tagged_entries(self):
+        operation_log.append_entry(
+            "delete", ["m1"], ["TRASH"], [], {}, account_email="a@example.com"
+        )
+
+        operation_log.backfill_account_email("legacy@example.com")
+
+        entries = operation_log.list_entries()
+        assert entries[0]["account_email"] == "a@example.com"
+
+    def test_backfill_is_a_no_op_when_nothing_untagged(self):
+        operation_log.append_entry(
+            "delete", ["m1"], ["TRASH"], [], {}, account_email="a@example.com"
+        )
+
+        operation_log.backfill_account_email("legacy@example.com")
+
+        assert len(operation_log.list_entries(account_email="a@example.com")) == 1
+
+
 class TestCorruptOrMissingFile:
     def test_missing_file_treated_as_empty(self):
         assert operation_log.list_entries() == []

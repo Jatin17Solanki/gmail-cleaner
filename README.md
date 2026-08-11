@@ -98,7 +98,9 @@ A full visual refresh — warm, minimal design system, sidebar navigation (Delet
 
 ### Multi-account switcher
 
-Sign in to multiple Gmail accounts at once and switch between them without repeatedly signing out and back in. One account active at a time (not a merged multi-account view).
+**Status: Done**
+
+Sign in to multiple Gmail accounts at once and switch between them without repeatedly signing out and back in. One account active at a time (not a merged multi-account view). Restore-from-Trash is scoped per account too, so switching accounts can never replay an undo against the wrong mailbox.
 
 ### Routines
 

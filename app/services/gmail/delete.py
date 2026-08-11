@@ -325,6 +325,7 @@ def delete_emails_by_sender(sender: str, filters: Optional[dict] = None) -> dict
                 added_labels=["TRASH"],
                 removed_labels=["INBOX"],
                 summary={"senders": [sender]},
+                account_email=state.current_user.get("email"),
             )
 
 
@@ -492,6 +493,7 @@ def delete_emails_bulk_background(
             added_labels=["TRASH"],
             removed_labels=["INBOX"],
             summary={"senders": senders},
+            account_email=state.current_user.get("email"),
         )
 
     # Remove deleted senders from cached scan results
