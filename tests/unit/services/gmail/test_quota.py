@@ -14,7 +14,7 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from app.services.gmail import quota as quota_module
-from app.services.gmail.quota import QuotaTracker
+from app.services.gmail.quota import MAX_CONCURRENT_BATCH_SIZE, QuotaTracker
 
 
 @pytest.fixture(autouse=True)
@@ -321,3 +321,50 @@ class TestPerAccountTrackerIsolation:
 
         assert quota_module._tracker_for_account("a@example.com").usage() == 5900
         assert quota_module._tracker_for_account("b@example.com").usage() == 100
+
+
+class TestRunBatchedGetsConcurrencyClamp:
+    """Gmail caps concurrent requests per user at 50 (confirmed via a real
+    "Too many concurrent requests for user" 429 during manual testing) —
+    independent of the 6,000-units/minute budget. A batch's sub-requests
+    fire essentially simultaneously, so batch_size must never exceed that,
+    regardless of what a caller asks for."""
+
+    def test_batch_size_is_clamped_even_when_caller_asks_for_more(self):
+        clock, sleep = _fake_clock_and_sleep()
+        tracker = QuotaTracker(
+            cap=1_000_000, window_seconds=60, clock=clock, sleep_fn=sleep
+        )
+        ids = [f"m{i}" for i in range(120)]
+        chunk_sizes: list[int] = []
+
+        class _SizeTrackingBatch:
+            def __init__(self, callback):
+                self._callback = callback
+                self._items: list[tuple[str, object]] = []
+
+            def add(self, request, request_id=None):
+                self._items.append((request_id, request))
+
+            def execute(self):
+                chunk_sizes.append(len(self._items))
+                for request_id, _request in self._items:
+                    self._callback(request_id, {"id": request_id}, None)
+
+        service = MagicMock()
+        service.new_batch_http_request.side_effect = (
+            lambda callback: _SizeTrackingBatch(callback)
+        )
+        received: dict[str, object] = {}
+
+        tracker.run_batched_gets(
+            service,
+            ids,
+            lambda mid: mid,
+            lambda rid, resp, exc: received.__setitem__(rid, resp),
+            cost_per_id=1,
+            batch_size=100,  # caller asks for more than the concurrency ceiling
+        )
+
+        assert all(size <= MAX_CONCURRENT_BATCH_SIZE for size in chunk_sizes)
+        assert len(received) == 120

@@ -97,7 +97,10 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
             }
         )
         processed = 0
-        batch_size = 100
+        # Gmail caps concurrent requests per user at 50 - a batch's
+        # sub-requests fire essentially simultaneously (see quota.py's
+        # MAX_CONCURRENT_BATCH_SIZE), so this must not exceed that.
+        batch_size = quota.MAX_CONCURRENT_BATCH_SIZE
 
         def process_message(request_id, response, exception) -> None:
             nonlocal processed

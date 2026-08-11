@@ -52,6 +52,15 @@ QUOTA_CAP_PER_MINUTE = 6000
 QUOTA_WINDOW_SECONDS = 60
 WARNING_USAGE_RATIO = 0.5
 
+# Gmail enforces a *separate* limit from the 6,000-units/minute budget: max
+# 50 concurrent requests per user (confirmed via Google's own error-handling
+# docs — a batch's sub-requests fire essentially simultaneously, so a
+# batch_size above this trips "Too many concurrent requests for user" 429s
+# regardless of how well-paced the per-minute unit total is). Enforced as a
+# hard clamp in run_batched_gets, not just a caller convention, since this
+# is exactly the kind of constraint a "quota awareness" module should own.
+MAX_CONCURRENT_BATCH_SIZE = 50
+
 COST = {
     "messages.list": 5,
     "messages.get": 20,
@@ -224,7 +233,7 @@ class QuotaTracker:
         callback: Callable[[str, Optional[dict], Optional[Exception]], None],
         cost_per_id: int,
         status_dict: Optional[dict] = None,
-        batch_size: int = 100,
+        batch_size: int = MAX_CONCURRENT_BATCH_SIZE,
         max_retry_passes: int = 1,
         label: str = "",
     ) -> None:
@@ -238,6 +247,13 @@ class QuotaTracker:
         retry passes is reported to `callback` as a terminal exception,
         same contract as today (caller decides how to handle it).
         """
+        # Hard clamp, not just a documented convention - a batch's
+        # sub-requests fire essentially simultaneously, so anything above
+        # Gmail's real 50-concurrent-requests-per-user ceiling risks the
+        # exact "Too many concurrent requests for user" 429s this method
+        # exists to handle gracefully. Applies to retry passes too, since
+        # they reuse this same batch_size.
+        batch_size = min(batch_size, MAX_CONCURRENT_BATCH_SIZE)
         pending = list(ids)
         exceptions_by_id: dict[str, Exception] = {}
 
@@ -341,7 +357,7 @@ def run_batched_gets(
     callback: Callable[[str, Optional[dict], Optional[Exception]], None],
     cost_per_id: int,
     status_dict: Optional[dict] = None,
-    batch_size: int = 100,
+    batch_size: int = MAX_CONCURRENT_BATCH_SIZE,
     max_retry_passes: int = 1,
     label: str = "",
 ) -> None:

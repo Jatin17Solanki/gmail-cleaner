@@ -81,9 +81,12 @@ def download_emails_background(senders: list[str]) -> None:
 
         return body.strip()
 
-    # Fetch full email content in batches
+    # Fetch full email content in batches. Already at Gmail's 50-concurrent-
+    # requests-per-user ceiling (quota.py's MAX_CONCURRENT_BATCH_SIZE) -
+    # run_batched_gets also clamps this defensively, kept explicit here since
+    # format="full" responses are heavier than the metadata scans use.
     email_data = []
-    batch_size = 50  # Smaller batches for full content
+    batch_size = quota.MAX_CONCURRENT_BATCH_SIZE
     fetched = 0
 
     def process_message(request_id, response, exception) -> None:

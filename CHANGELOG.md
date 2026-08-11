@@ -191,28 +191,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
-- Third human manual-testing round on the Phase 4a2 PR, **investigation
-  ongoing, not fully confirmed resolved**: after the timeout fix above, a
-  limit=1000 scan against a ~1800-email inbox completed but only counted
-  837 of the 1000 fetched messages (6 wait cycles totaling ~4 minutes -
-  more cycles than the ~3 the clean quota math predicts). This means some
-  messages are still being silently dropped after exhausting the one retry
-  pass `run_batched_gets` added earlier in this phase. Two real gaps found
-  while investigating (both fixed, but neither confirmed as *the* cause
-  without server-log evidence from a repeat run): (1) `run_batched_gets`
-  had zero logging when a message permanently failed - added
+- **Root cause of the third round's undercounting confirmed and fixed**,
+  using evidence from the opt-in `QUOTA_TRACE_LOGGING` added to
+  investigate it: the actual failures were real `HttpError 429`s reading
+  `"Too many concurrent requests for user."` (`reason: rateLimitExceeded`)
+  - **not** the 6,000-units/minute budget the previous round's fix
+  targeted. Gmail enforces a *separate* limit, confirmed via Google's own
+  error-handling docs: max 50 concurrent requests per user, independent of
+  total unit cost. `run_batched_gets`'s `batch_size = 100` (inherited
+  unchanged from the pre-Phase-4a2 code) fires 100 sub-requests
+  essentially simultaneously per batch - double that ceiling - so both the
+  original attempt and its retry (which reuses the same batch_size) hit
+  the same wall, explaining why messages survived a retry pass and were
+  still dropped. This was almost certainly a contributing cause of scan
+  undercounting long before this phase existed, just never diagnosable
+  without the logging this phase added. Fixed by clamping `batch_size` to
+  a new `MAX_CONCURRENT_BATCH_SIZE = 50` constant - enforced as a hard
+  clamp inside `run_batched_gets` itself (not just a caller convention),
+  and the delete/archive/mark-read scan functions' local `batch_size`
+  values updated to match explicitly. `download.py`'s existing
+  `batch_size = 50` already happened to sit at the ceiling; now references
+  the shared constant instead of a coincidental magic number. New test
+  `TestRunBatchedGetsConcurrencyClamp` proves the clamp holds even if a
+  caller asks for more
+- Third human manual-testing round on the Phase 4a2 PR: after the timeout
+  fix below, a limit=1000 scan against a ~1800-email inbox completed but
+  only counted 837 of the 1000 fetched messages (6 wait cycles totaling
+  ~4 minutes - more than the clean per-minute-budget math alone predicts).
+  Root cause turned out to be the concurrent-request limit above, not the
+  two things fixed while investigating (both real, independently
+  justified improvements, kept regardless): (1) `run_batched_gets` had
+  zero logging when a message permanently failed - added
   `logger.warning()` for both the immediate-non-retryable case and the
-  exhausted-retries case, so the next occurrence is diagnosable instead of
-  a silent number mismatch; (2) `_is_retryable_http_error` only retried
-  429/quota-403 - Gmail's own transient 5xx errors (500/502/503/504,
-  standard "back off and retry" cases per Google's API client guidance)
-  were never retried at all, which is more plausible than sustained 429
-  pressure surviving a retry pass, since `gate()` already self-limits
-  below the 6,000/min cap before every attempt including retries. Broadened
-  the retryable-status set to include them. New test
-  `test_transient_5xx_retries_then_succeeds`. **Follow-up needed**: rerun
-  the same scan and check server console output for the new warning logs
-  to confirm what's actually failing, rather than assuming this closes it
+  exhausted-retries case; (2) `_is_retryable_http_error` only retried
+  429/quota-403 - broadened to include Gmail's transient 5xx statuses
+  (500/502/503/504, standard practice per Google's API client guidance).
+  New test `test_transient_5xx_retries_then_succeeds`
 - Second human manual-testing round on the Phase 4a2 PR: a scan with the
   default limit (1000) went through several "approaching rate limit" wait
   cycles and then failed with "Scan timed out" instead of completing.
