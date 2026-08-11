@@ -110,6 +110,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of string-templating sender-controlled subject text into HTML, which
   removes the whole class of attribute-escaping bugs rather than just
   this instance
+- Human manual-testing round on the Phase 3 PR found several more issues,
+  fixed in the same branch per the established Phase 1/2 precedent:
+  - **Root cause behind several reported-broken interactions**: the
+    Tabler icon webfont was loaded from a CDN (`cdn.jsdelivr.net`), which
+    was unreliable in practice - when it failed to load, every icon-only
+    control (row expand/collapse chevron, per-row Label/Important icons,
+    the Download button, the filter drawer's close icon) rendered with no
+    visible glyph and effectively no usable click target, making them
+    look broken/absent rather than just unstyled. Fixed by vendoring
+    `@tabler/icons-webfont` into `static/vendor/tabler-icons/` and
+    serving it locally instead of depending on a third-party CDN at
+    runtime - consistent with the app's own "runs 100% locally" premise.
+    Applied to both `index.html` and `login.html` (the latter had the
+    same CDN dependency, predating Phase 3).
+  - On the Delete view, toggling only a row's "Unsub" checkbox (without
+    also checking the row's main delete checkbox) left the bottom
+    actions bar hidden, making "Unsubscribe selected" unreachable for
+    that selection. `_updateSelectionBar()` in `senderList.js` now shows
+    the actions bar for either kind of selection, and the summary text
+    distinguishes "N emails selected across M senders" from "M senders
+    queued to unsubscribe" (or both, combined) depending on what's
+    actually selected
+  - The filter drawer had no way to close it without either applying or
+    clearing filters - the only affordance was the (previously invisible,
+    per the icon issue above) close icon. Added click-outside-the-drawer-
+    to-dismiss and Escape-to-dismiss, neither of which touch filter state
+  - Buttons and icon-only row actions had no hover/active/focus-visible
+    styling at all (`design-system.css` only defines resting states) -
+    added interactive feedback across `.btn`/`.btn-primary`/`.btn-danger`
+    and the per-row action icons
+  - Added a `title` tooltip to the unsubscribe status badge explaining
+    what `Auto`/`Open link`/`No unsubscribe link` each mean - this
+    explanatory copy existed on the old standalone Unsubscribe view (an
+    info-note card) but was dropped when that view merged into Delete
 - Restoring a deleted email moved it out of Trash but not back into the
   Inbox (only visible in "All Mail" afterward). Root cause: the delete
   path added the `TRASH` label but never explicitly removed `INBOX`, so

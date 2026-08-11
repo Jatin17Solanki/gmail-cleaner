@@ -27,10 +27,56 @@ body {
   display: none !important;
 }
 
+/* ----- Interactive feedback -----
+   design-system.css defines resting styles only (no :hover/:active/:focus)
+   - buttons and icon-only actions had no visual feedback for what's about
+   to happen on click. */
+
+.btn {
+  transition: background-color 0.1s ease, border-color 0.1s ease, transform 0.05s ease;
+}
+
+.btn:hover {
+  background: var(--bg-surface-alt);
+  border-color: var(--text-secondary);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary:hover {
+  background: #33302a;
+  border-color: #33302a;
+}
+
+.btn-danger:hover {
+  background: var(--danger-bg);
+}
+
+.btn:focus-visible,
+.sender-row-action-icon:focus-visible,
+.row-chevron:focus-visible,
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sender-row-action-icon:hover,
+.row-chevron:hover,
+.drawer-close:hover {
+  color: var(--accent-text);
+}
+
 /* ----- Sidebar ----- */
 
 .nav-item {
   cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.nav-item:hover:not(.active):not(.nav-item-disabled) {
+  background: var(--bg-surface-alt);
 }
 
 .nav-item-disabled {

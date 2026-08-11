@@ -160,8 +160,13 @@ class SenderListView {
             const isOneClick = sender.unsubscribe_type === 'one-click';
             const badgeClass = hasLink ? (isOneClick ? 'badge-success' : 'badge-warning') : 'badge-muted';
             const badgeLabel = hasLink ? (isOneClick ? 'Auto' : 'Open link') : 'No unsubscribe link';
+            const badgeTitle = hasLink
+                ? (isOneClick
+                    ? 'One-click unsubscribe - no extra confirmation needed'
+                    : 'Opens the sender\'s unsubscribe page - you may need to confirm there')
+                : 'No unsubscribe link was found in this sender\'s emails';
             unsubHtml = `
-                <span class="badge ${badgeClass}">${badgeLabel}</span>
+                <span class="badge ${badgeClass}" title="${GmailCleaner.UI.escapeHtml(badgeTitle)}">${badgeLabel}</span>
                 <label class="unsub-toggle ${hasLink ? '' : 'disabled'}">
                     <input type="checkbox" class="unsub-cb" ${hasLink ? '' : 'disabled'}>Unsub
                 </label>`;
@@ -383,13 +388,14 @@ class SenderListView {
 
     _updateSelectionBar() {
         const emails = this.getSelectedSenderEmails();
-        const actionsBar = this.id('ActionsBar');
-        if (emails.length === 0) {
-            actionsBar?.classList.add('hidden');
-        } else {
-            actionsBar?.classList.remove('hidden');
-        }
-        this.onSelectionChange(emails, this.getSelectedCount());
+        // The Unsub toggle is independent of the main row checkbox (a sender
+        // can be queued to unsubscribe without being selected for delete, or
+        // vice versa) - the actions bar must show for either, not just the
+        // main checkbox, so "Unsubscribe selected" stays reachable.
+        const unsubToggled = this.showUnsubscribe ? this.getUnsubToggledSenders() : [];
+        const hasSelection = emails.length > 0 || unsubToggled.length > 0;
+        this.id('ActionsBar')?.classList.toggle('hidden', !hasSelection);
+        this.onSelectionChange(emails, this.getSelectedCount(), unsubToggled);
     }
 
     // ----- Filter drawer -----
@@ -401,6 +407,21 @@ class SenderListView {
         this.id('FilterApplyBtn')?.addEventListener('click', () => this._applyDrawer());
 
         this.id('FilterOlderThan')?.addEventListener('change', (e) => this._handleOlderThanChange(e));
+
+        // Clicking the backdrop (outside the 280px drawer panel, but inside
+        // the overlay that spans the view) closes without applying -
+        // Clear/Apply are the only actions that touch filter state, same as
+        // the drawer's own explicit Cancel-equivalent (the X icon).
+        this.id('DrawerOverlay')?.addEventListener('click', (e) => {
+            if (e.target === this.id('DrawerOverlay')) {
+                this.id('DrawerOverlay').classList.add('hidden');
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !this.id('DrawerOverlay')?.classList.contains('hidden')) {
+                this.id('DrawerOverlay').classList.add('hidden');
+            }
+        });
     }
 
     _handleOlderThanChange(event) {

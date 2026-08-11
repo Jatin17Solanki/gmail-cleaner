@@ -19,14 +19,21 @@ GmailCleaner.Delete = (() => {
         showSubjectPreview: true,
         emptyAfterScanTitle: 'No senders found',
         emptyAfterScanBody: 'Try widening your filters and scanning again.',
-        onSelectionChange: (emails, count) => updateSelectionBar(emails, count),
+        onSelectionChange: (emails, count, unsubToggled) => updateSelectionBar(emails, count, unsubToggled),
     });
 
-    function updateSelectionBar(emails, count) {
+    function updateSelectionBar(emails, count, unsubToggled) {
         const summary = view.id('SelectionSummary');
-        if (summary) {
-            summary.textContent = `${count} emails selected across ${emails.length} sender${emails.length === 1 ? '' : 's'}`;
-        }
+        if (!summary) return;
+
+        const deletePart = emails.length > 0
+            ? `${count} emails selected across ${emails.length} sender${emails.length === 1 ? '' : 's'}`
+            : '';
+        const unsubPart = unsubToggled.length > 0
+            ? `${unsubToggled.length} sender${unsubToggled.length === 1 ? '' : 's'} queued to unsubscribe`
+            : '';
+
+        summary.textContent = [deletePart, unsubPart].filter(Boolean).join(' · ') || '0 emails selected';
     }
 
     function buildActionButtons() {
