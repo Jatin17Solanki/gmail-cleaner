@@ -191,6 +191,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Confirmed resolved (sixth round)**: rerunning the same limit=1000 scan
+  against the >1000-message inbox that originally showed 837/1000 counted
+  now shows `run_batched_gets summary: requested=1000 succeeded=1000
+  failed=0` - zero loss, exact match, verified with real evidence rather
+  than unit tests alone. Closes the multi-round investigation into scans
+  silently under-reporting; root cause was Gmail's 50-concurrent-requests-
+  per-account limit (see the two rounds below), a separate constraint from
+  the 6,000-units/minute budget this phase was originally built around.
 - **Fifth round: `batch_size=25` produced zero failure warnings, but the
   final count (992) still didn't obviously reconcile against the
   limit=1000 requested against a >1000-message inbox.** Hand-counting
