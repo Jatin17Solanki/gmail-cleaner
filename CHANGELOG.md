@@ -215,6 +215,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Scan ETA message kept creeping forward instead of staying fixed.**
+  Found by the human immediately after the scan time estimate feature
+  shipped: `senderList.js`'s `formatEta()` computed
+  `Date.now() + estimated_seconds` fresh on every call, and since the
+  status-polling loop calls it on every 300ms tick throughout an active
+  scan, the displayed "come back around H:MM" time kept sliding forward
+  in step with real time instead of staying pinned to when the scan
+  actually started. Fixed by capturing the target timestamp once (on
+  `SenderListView._scanReadyAtMs`, set the first time the ETA is shown for
+  a given scan) and reusing that fixed value for every subsequent poll
+  tick's render, reset back to `null` at the start/end of each scan.
+  `formatEta()` now accepts an optional pinned `readyAtMs` instead of
+  always recomputing from "now". No JS test harness exists in this repo
+  (known gap - see `PROGRESS.md` backlog item 3), so verified with a
+  standalone Node simulation of multiple poll ticks confirming the
+  displayed time no longer moves
 - **Confirmed resolved (sixth round)**: rerunning the same limit=1000 scan
   against the >1000-message inbox that originally showed 837/1000 counted
   now shows `run_batched_gets summary: requested=1000 succeeded=1000

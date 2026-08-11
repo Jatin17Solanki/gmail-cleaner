@@ -30,10 +30,16 @@ GmailCleaner.SenderList = {
     // quota.estimate_scan_seconds) into a human message with both a
     // relative duration and an absolute "come back around" clock time,
     // since a countdown alone doesn't tell you when to actually check back.
-    formatEta(seconds) {
+    //
+    // readyAtMs, if given, is an already-fixed target timestamp (see
+    // SenderListView._pollScanStatus) - without it, this would recompute
+    // Date.now() + seconds on every call, and since this runs on every
+    // 300ms poll tick during an active scan, the displayed "come back
+    // around" time would keep creeping forward instead of staying fixed.
+    formatEta(seconds, readyAtMs = null) {
         const minutes = Math.max(1, Math.round(seconds / 60));
         const duration = minutes === 1 ? 'about a minute' : `about ${minutes} minutes`;
-        const readyAt = new Date(Date.now() + seconds * 1000);
+        const readyAt = new Date(readyAtMs !== null ? readyAtMs : Date.now() + seconds * 1000);
         const readyAtText = readyAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         return `This scan will take ${duration} to complete — come back around ${readyAtText} to see results.`;
     }
@@ -58,6 +64,7 @@ class SenderListView {
         this.expanded = new Set();
         this.litepicker = null;
         this.scanning = false;
+        this._scanReadyAtMs = null;
 
         this._initialEmptyHtml = null;
 
@@ -91,6 +98,7 @@ class SenderListView {
         progress?.classList.remove('hidden');
         if (progressText) progressText.textContent = 'Scanning...';
         eta?.classList.add('hidden');
+        this._scanReadyAtMs = null;
 
         try {
             await fetch(this.scanEndpoint, {
@@ -110,6 +118,7 @@ class SenderListView {
             if (scanBtn) scanBtn.disabled = false;
             progress?.classList.add('hidden');
             eta?.classList.add('hidden');
+            this._scanReadyAtMs = null;
         }
     }
 
@@ -134,7 +143,16 @@ class SenderListView {
         // meaningfully long wait - a fast scan doesn't need it.
         if (eta && etaText) {
             if (status.estimated_seconds && status.estimated_seconds > 30) {
-                etaText.textContent = GmailCleaner.SenderList.formatEta(status.estimated_seconds);
+                // Pin the target timestamp the first time it's shown for
+                // this scan - recomputing Date.now() + estimated_seconds on
+                // every 300ms poll tick would make the displayed time keep
+                // creeping forward instead of staying fixed.
+                if (this._scanReadyAtMs === null) {
+                    this._scanReadyAtMs = Date.now() + status.estimated_seconds * 1000;
+                }
+                etaText.textContent = GmailCleaner.SenderList.formatEta(
+                    status.estimated_seconds, this._scanReadyAtMs
+                );
                 eta.classList.remove('hidden');
             } else {
                 eta.classList.add('hidden');
