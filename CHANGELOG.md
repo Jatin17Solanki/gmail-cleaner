@@ -147,6 +147,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- Human manual-testing round on the Phase 4a PR: the topbar account chip
+  stayed on the previous account's email after "Add another account"
+  completed (the dropdown showed the new account checkmarked correctly,
+  since it re-fetches `GET /api/accounts` fresh each time it's opened).
+  Root cause: `pollStatus()` resolved as soon as `/api/auth-status`
+  reported `logged_in: true`, but for this flow the *previous* account
+  stays validly signed in the entire time the new consent screen is open
+  in the browser - the very first poll already satisfied that condition
+  with the old email, so the UI locked in there and never re-checked once
+  the new account actually became active in the background. Fixed by
+  having `pollStatus()` optionally wait for the active account's email to
+  actually change, not just for `logged_in` to be true.
 - Phase 3 manual testing against a real inbox (not synthetic data - just
   browsing, no destructive actions taken) surfaced a subject line
   containing literal `"` characters (e.g. `"the doom of ai has started"`)
