@@ -53,6 +53,7 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
             .list(userId="me", maxResults=min(limit, 500), q=query or None),
             quota.COST["messages.list"],
             state.markread_scan_status,
+            label="messages.list (markread scan)",
         )
 
         messages = results.get("messages", [])
@@ -69,6 +70,7 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
                 ),
                 quota.COST["messages.list"],
                 state.markread_scan_status,
+                label="messages.list (markread scan)",
             )
             messages.extend(results.get("messages", []))
 
@@ -157,6 +159,7 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
             quota.COST["messages.get"],
             state.markread_scan_status,
             batch_size=batch_size,
+            label="messages.get (markread scan)",
         )
 
         sorted_senders = sorted(

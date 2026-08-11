@@ -60,6 +60,7 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
             .list(userId="me", maxResults=min(limit, 500), q=query or None),
             quota.COST["messages.list"],
             state.delete_scan_status,
+            label="messages.list (delete scan)",
         )
 
         messages = results.get("messages", [])
@@ -76,6 +77,7 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
                 ),
                 quota.COST["messages.list"],
                 state.delete_scan_status,
+                label="messages.list (delete scan)",
             )
             messages.extend(results.get("messages", []))
 
@@ -177,6 +179,7 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
             quota.COST["messages.get"],
             state.delete_scan_status,
             batch_size=batch_size,
+            label="messages.get (delete scan)",
         )
 
         # Sort by count

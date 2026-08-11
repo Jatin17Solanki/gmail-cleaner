@@ -49,6 +49,7 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
             .list(userId="me", maxResults=min(limit, 500), q=query or None),
             quota.COST["messages.list"],
             state.archive_scan_status,
+            label="messages.list (archive scan)",
         )
 
         messages = results.get("messages", [])
@@ -65,6 +66,7 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
                 ),
                 quota.COST["messages.list"],
                 state.archive_scan_status,
+                label="messages.list (archive scan)",
             )
             messages.extend(results.get("messages", []))
 
@@ -151,6 +153,7 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
             quota.COST["messages.get"],
             state.archive_scan_status,
             batch_size=batch_size,
+            label="messages.get (archive scan)",
         )
 
         sorted_senders = sorted(

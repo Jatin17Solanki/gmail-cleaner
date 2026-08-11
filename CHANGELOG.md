@@ -173,6 +173,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     flat); `getProfile`/`labels.*` costs are a documented assumption
     since the PRD doesn't price them and they're cheap/rare, not the
     source of exhaustion.
+  - New opt-in `QUOTA_TRACE_LOGGING` env var (off by default, per PRD
+    Section 7's "silent by default" design) logs a timestamped line for
+    every Gmail API call the quota tracker charges - account, cost, and
+    cumulative usage at that moment - so scan pacing can be diagnosed
+    from server logs instead of manually counting "waiting Ns" messages in
+    the UI. Uses a dedicated, self-contained logger with its own handler
+    and formatter (`app/services/gmail/quota.py`'s `_trace_logger`), since
+    the app has no `logging.basicConfig` anywhere and a plain
+    `logger.info()` call would otherwise silently vanish (Python's
+    fallback handler only shows WARNING+).
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

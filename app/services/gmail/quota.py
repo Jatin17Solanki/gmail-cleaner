@@ -25,7 +25,28 @@ from typing import Callable, Optional
 
 from googleapiclient.errors import HttpError
 
+from app.core import settings
+
 logger = logging.getLogger(__name__)
+
+# Dedicated, self-contained trace logger for QUOTA_TRACE_LOGGING (opt-in
+# debugging aid — see app/core/config.py). The app has no logging.basicConfig
+# anywhere, so a plain logger.info() call here would silently vanish (Python's
+# fallback handler only shows WARNING+). This logger gets its own handler and
+# formatter instead, so it works regardless of whatever logging setup (or
+# lack of one) the rest of the app has, and always includes a real timestamp.
+_trace_logger = logging.getLogger(f"{__name__}.trace")
+_trace_logger.propagate = False
+if settings.quota_trace_logging:
+    if not _trace_logger.handlers:
+        _trace_handler = logging.StreamHandler()
+        _trace_handler.setFormatter(
+            logging.Formatter("%(asctime)s [quota] %(message)s")
+        )
+        _trace_logger.addHandler(_trace_handler)
+    _trace_logger.setLevel(logging.INFO)
+else:
+    _trace_logger.setLevel(logging.WARNING)  # .info() calls become cheap no-ops
 
 QUOTA_CAP_PER_MINUTE = 6000
 QUOTA_WINDOW_SECONDS = 60
@@ -88,11 +109,13 @@ class QuotaTracker:
         window_seconds: float = QUOTA_WINDOW_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         sleep_fn: Callable[[float], None] = time.sleep,
+        account_key: str = "",
     ) -> None:
         self._cap = cap
         self._window = window_seconds
         self._clock = clock
         self._sleep = sleep_fn
+        self._account_key = account_key
         self._lock = threading.Lock()
         self._events: deque[tuple[float, int]] = deque()
         self._warned = False
@@ -120,7 +143,9 @@ class QuotaTracker:
                 100 * usage_now / self._cap,
             )
 
-    def gate(self, cost: int, status_dict: Optional[dict] = None) -> None:
+    def gate(
+        self, cost: int, status_dict: Optional[dict] = None, label: str = ""
+    ) -> None:
         """Block until `cost` more units can be spent without exceeding the cap."""
         while True:
             with self._lock:
@@ -130,6 +155,14 @@ class QuotaTracker:
                 if current + cost <= self._cap:
                     self._events.append((now, cost))
                     self._maybe_warn_locked(current + cost)
+                    _trace_logger.info(
+                        "account=%s %scost=%d usage=%d/%d",
+                        self._account_key or "unknown",
+                        f"{label} " if label else "",
+                        cost,
+                        current + cost,
+                        self._cap,
+                    )
                     return
                 oldest_time = self._events[0][0]
                 wait = max(oldest_time + self._window - now, 0.1)
@@ -147,10 +180,11 @@ class QuotaTracker:
         cost: int,
         status_dict: Optional[dict] = None,
         max_retries: int = 5,
+        label: str = "",
     ):
         """gate() then request.execute(), retrying with backoff on a real 429/403."""
         for attempt in range(max_retries + 1):
-            self.gate(cost, status_dict)
+            self.gate(cost, status_dict, label)
             try:
                 return request.execute()
             except HttpError as e:
@@ -192,6 +226,7 @@ class QuotaTracker:
         status_dict: Optional[dict] = None,
         batch_size: int = 100,
         max_retry_passes: int = 1,
+        label: str = "",
     ) -> None:
         """Run `request_factory(id)` for every id in `ids` via Gmail batch requests.
 
@@ -226,7 +261,11 @@ class QuotaTracker:
 
             for i in range(0, len(pending), batch_size):
                 chunk = pending[i : i + batch_size]
-                self.gate(cost_per_id * len(chunk), status_dict)
+                self.gate(
+                    cost_per_id * len(chunk),
+                    status_dict,
+                    f"{label} x{len(chunk)}" if label else f"x{len(chunk)}",
+                )
                 batch = service.new_batch_http_request(callback=batch_callback)
                 for msg_id in chunk:
                     batch.add(request_factory(msg_id), request_id=msg_id)
@@ -265,7 +304,7 @@ _trackers_lock = threading.Lock()
 def _tracker_for_account(account_key: str) -> QuotaTracker:
     with _trackers_lock:
         if account_key not in _trackers:
-            _trackers[account_key] = QuotaTracker()
+            _trackers[account_key] = QuotaTracker(account_key=account_key)
         return _trackers[account_key]
 
 
@@ -279,15 +318,19 @@ def _active_tracker() -> QuotaTracker:
     return _tracker_for_account(accounts.get_active_account() or "_unknown")
 
 
-def gate(cost: int, status_dict: Optional[dict] = None) -> None:
-    _active_tracker().gate(cost, status_dict)
+def gate(cost: int, status_dict: Optional[dict] = None, label: str = "") -> None:
+    _active_tracker().gate(cost, status_dict, label)
 
 
 def execute_with_backoff(
-    request, cost: int, status_dict: Optional[dict] = None, max_retries: int = 5
+    request,
+    cost: int,
+    status_dict: Optional[dict] = None,
+    max_retries: int = 5,
+    label: str = "",
 ):
     return _active_tracker().execute_with_backoff(
-        request, cost, status_dict, max_retries
+        request, cost, status_dict, max_retries, label
     )
 
 
@@ -300,6 +343,7 @@ def run_batched_gets(
     status_dict: Optional[dict] = None,
     batch_size: int = 100,
     max_retry_passes: int = 1,
+    label: str = "",
 ) -> None:
     _active_tracker().run_batched_gets(
         service,
@@ -310,4 +354,5 @@ def run_batched_gets(
         status_dict,
         batch_size,
         max_retry_passes,
+        label,
     )
