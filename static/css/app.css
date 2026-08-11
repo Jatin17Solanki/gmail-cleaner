@@ -223,6 +223,7 @@ body {
   padding: 12px 18px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .scan-progress {
@@ -231,6 +232,36 @@ body {
   gap: 6px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.scan-info-icon {
+  color: var(--text-muted);
+  cursor: help;
+  font-size: 16px;
+}
+
+.scan-info-icon:hover {
+  color: var(--text-secondary);
+}
+
+/* Phase 4a2: quota-aware scans can take a few minutes for a large limit -
+   this tells the user roughly how long and when to check back, instead of
+   leaving them watching a spinner with no sense of when it'll finish. */
+.scan-eta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--info-bg);
+  color: var(--info-text);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.scan-eta .scan-info-icon {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .spin {

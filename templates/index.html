@@ -94,6 +94,7 @@
 {% endmacro %}
 
 {% macro sender_view(view_id, prefix, title, empty_title, empty_body, show_unread=True) %}
+{% set quota_tooltip = "Gmail limits API access to 6,000 units per minute. Reading one email's details costs 20 units, so scanning 1,000 emails costs about 20,000 units — roughly 3x the per-minute limit. Scans are automatically paced to stay within it, which is why larger ones can take a few minutes instead of failing or missing emails." %}
 <div class="view hidden" id="{{ view_id }}View">
   <div class="topbar">
     <button class="btn" id="{{ prefix }}FiltersBtn">
@@ -110,9 +111,15 @@
       <option value="5000">Scan 5000</option>
     </select>
     <button class="btn btn-primary" id="{{ prefix }}ScanBtn"><i class="ti ti-search"></i>Scan senders</button>
+    <i class="ti ti-info-circle scan-info-icon" title="{{ quota_tooltip }}" aria-label="Why scans can take a few minutes"></i>
     <span class="scan-progress hidden" id="{{ prefix }}ScanProgress">
       <i class="ti ti-loader-2 spin"></i><span id="{{ prefix }}ScanProgressText">Scanning...</span>
     </span>
+    <div class="scan-eta hidden" id="{{ prefix }}ScanEta">
+      <i class="ti ti-clock-hour-4"></i>
+      <span id="{{ prefix }}ScanEtaText"></span>
+      <i class="ti ti-info-circle scan-info-icon" title="{{ quota_tooltip }}" aria-label="Why scans can take a few minutes"></i>
+    </div>
   </div>
   <div class="list-area" id="{{ prefix }}ListArea">
     <div class="empty-state" id="{{ prefix }}EmptyState">

@@ -82,6 +82,9 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
             state.markread_scan_status["done"] = True
             return
 
+        state.markread_scan_status["estimated_seconds"] = quota.estimate_scan_seconds(
+            total
+        )
         state.markread_scan_status["message"] = f"Scanning {total} emails..."
 
         sender_counts: dict[str, dict] = defaultdict(

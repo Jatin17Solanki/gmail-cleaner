@@ -147,6 +147,7 @@ class AppState:
             "message": "Ready",
             "done": False,
             "error": None,
+            "estimated_seconds": None,
         }
         self.delete_scan_filters = None
 
@@ -228,6 +229,7 @@ class AppState:
             "message": "Ready",
             "done": False,
             "error": None,
+            "estimated_seconds": None,
         }
         self.archive_scan_filters = None
 
@@ -239,6 +241,7 @@ class AppState:
             "message": "Ready",
             "done": False,
             "error": None,
+            "estimated_seconds": None,
         }
         self.markread_scan_filters = None
 

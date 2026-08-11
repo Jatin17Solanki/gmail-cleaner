@@ -183,6 +183,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the app has no `logging.basicConfig` anywhere and a plain
     `logger.info()` call would otherwise silently vanish (Python's
     fallback handler only shows WARNING+).
+  - **Scan time estimate + quota explainer, requested by the human once
+    the quota-tracking investigation above was confirmed resolved** (this
+    was originally scoped as a deferred future-phase item - backlog item 8
+    - but the human asked for the time-estimate piece specifically to be
+    built now, in this same PR, since it directly explains the mechanism
+    this phase just built). New `quota.estimate_scan_seconds(message_count)`
+    computes a wall-clock estimate from the same cost model `gate()`
+    already enforces (empirically matched real scans to within ~5% during
+    this phase's investigation - see the confirmed-resolved entry above).
+    Wired into `scan_senders_for_delete`/`_for_archive`/`_for_markread` as
+    a new `estimated_seconds` field on each scan's status dict, set once
+    the true message count is known (post-`list()`, not a pre-scan guess
+    off the raw `limit`). Frontend (`senderList.js`) shows it as "This scan
+    will take about N minutes to complete — come back around H:MM to see
+    results" once a scan's estimate exceeds 30 seconds (not shown for fast
+    scans), with a Tabler `ti-info-circle` icon (native `title` tooltip,
+    matching the existing tooltip pattern used elsewhere in this app - no
+    new tooltip component introduced) explaining the underlying Gmail
+    quota math with a concrete example. The same icon/tooltip is also
+    placed persistently next to the scan controls (not just tied to an
+    active scan), per explicit request to "communicate as much as
+    possible." Shared across Delete/Archive/Mark-as-read since all three
+    use the same `sender_view` Jinja macro. New tests
+    `TestEstimateScanSeconds`.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

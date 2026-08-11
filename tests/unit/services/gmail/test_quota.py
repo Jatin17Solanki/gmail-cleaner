@@ -14,7 +14,11 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from app.services.gmail import quota as quota_module
-from app.services.gmail.quota import MAX_CONCURRENT_BATCH_SIZE, QuotaTracker
+from app.services.gmail.quota import (
+    MAX_CONCURRENT_BATCH_SIZE,
+    QuotaTracker,
+    estimate_scan_seconds,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -447,3 +451,27 @@ class TestRunBatchedGetsConcurrencyClamp:
 
         assert all(size <= MAX_CONCURRENT_BATCH_SIZE for size in chunk_sizes)
         assert len(received) == 120
+
+
+class TestEstimateScanSeconds:
+    def test_zero_or_negative_returns_zero(self):
+        assert estimate_scan_seconds(0) == 0
+        assert estimate_scan_seconds(-5) == 0
+
+    def test_small_scan_fits_in_one_window_returns_zero(self):
+        # 100 messages: 100*20 + 1*5 = 2005 units, well under the 6,000 cap.
+        assert estimate_scan_seconds(100) == 0
+
+    def test_large_scan_matches_confirmed_real_world_behavior(self):
+        # 992 messages: matches the actual scan from manual testing (real
+        # elapsed time was ~188.5s) - 992*20 + 2*5 = 19850 units,
+        # extra_windows = ceil((19850-6000)/6000) = 3 -> 3*60+15 = 195s.
+        assert estimate_scan_seconds(992) == 195
+
+    def test_estimate_scales_with_message_count(self):
+        assert estimate_scan_seconds(2000) > estimate_scan_seconds(1000) > 0
+
+    def test_exactly_at_cap_returns_zero(self):
+        # 300 messages * 20 = 6000 units exactly (ignoring list() cost),
+        # comfortably under with the small list() addition too.
+        assert estimate_scan_seconds(299) == 0

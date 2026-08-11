@@ -18,6 +18,7 @@ those costs below are a reasonable approximation, not load-bearing.
 
 import json
 import logging
+import math
 import threading
 import time
 from collections import deque
@@ -77,6 +78,39 @@ COST = {
     "labels.create": 5,
     "labels.delete": 5,
 }
+
+# Small, fixed cushion added on top of the theoretical minimum below, for
+# real-world overhead (network round-trips, retries, other small charges
+# like getProfile) the formula doesn't model. Empirically, real scans in
+# this range landed within ~5% of the unpadded formula - see PROGRESS.md's
+# Phase 4a2 investigation - so this is a safety margin, not a correction
+# for a known systematic error.
+_ESTIMATE_BUFFER_SECONDS = 15
+
+
+def estimate_scan_seconds(message_count: int) -> int:
+    """Rough wall-clock estimate for scanning `message_count` messages.
+
+    Uses the same cost model gate()/COST already enforce, so this tracks
+    real behavior rather than being a separate guess. Assumes a fresh quota
+    budget for the active account — concurrent activity elsewhere on the
+    same account (another tab, a routine, another device) can make the
+    real scan take longer than this estimate, same caveat as
+    MAX_CONCURRENT_BATCH_SIZE above.
+    """
+    if message_count <= 0:
+        return 0
+    list_calls = math.ceil(message_count / 500)
+    total_cost = (
+        message_count * COST["messages.get"] + list_calls * COST["messages.list"]
+    )
+    if total_cost <= QUOTA_CAP_PER_MINUTE:
+        return 0  # fits in a single window - no proactive wait expected
+    extra_windows = math.ceil(
+        (total_cost - QUOTA_CAP_PER_MINUTE) / QUOTA_CAP_PER_MINUTE
+    )
+    return extra_windows * QUOTA_WINDOW_SECONDS + _ESTIMATE_BUFFER_SECONDS
+
 
 _RETRYABLE_403_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
 # Gmail's own backend can return transient 5xx errors under load, independent

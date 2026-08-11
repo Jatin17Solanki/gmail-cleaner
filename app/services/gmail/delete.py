@@ -89,6 +89,9 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
             state.delete_scan_status["done"] = True
             return
 
+        state.delete_scan_status["estimated_seconds"] = quota.estimate_scan_seconds(
+            total
+        )
         state.delete_scan_status["message"] = f"Scanning {total} emails..."
 
         # Group by sender using Gmail Batch API

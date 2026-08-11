@@ -78,6 +78,9 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
             state.archive_scan_status["done"] = True
             return
 
+        state.archive_scan_status["estimated_seconds"] = quota.estimate_scan_seconds(
+            total
+        )
         state.archive_scan_status["message"] = f"Scanning {total} emails..."
 
         sender_counts: dict[str, dict] = defaultdict(
