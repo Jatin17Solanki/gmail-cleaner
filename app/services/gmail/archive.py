@@ -270,6 +270,7 @@ def archive_emails_background(senders: list[str], filters: Optional[dict] = None
                 added_labels=[],
                 removed_labels=["INBOX"],
                 summary={"senders": senders},
+                account_email=state.current_user.get("email"),
             )
         # Remove archived senders from the cached archive-scan results, same
         # pattern delete_emails_bulk_background uses for delete_scan_results.

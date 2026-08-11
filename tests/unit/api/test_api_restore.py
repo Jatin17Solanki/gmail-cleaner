@@ -64,6 +64,16 @@ class TestListRestorableEndpoint:
         assert response.status_code == 200
         assert response.json() == []
 
+    @patch("app.api.restore.operation_log.list_entries")
+    @patch("app.api.restore.accounts.get_active_account", return_value="a@example.com")
+    def test_scopes_to_active_account(self, mock_active, mock_list, client):
+        """Phase 4a: only the active account's entries should be requested."""
+        mock_list.return_value = []
+
+        client.get("/api/restore")
+
+        mock_list.assert_called_once_with(account_email="a@example.com")
+
 
 class TestRestoreEndpoint:
     @patch("app.api.restore.restore_operation")

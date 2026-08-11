@@ -16,7 +16,13 @@ from fastapi.templating import Jinja2Templates
 from app.core import settings
 from app.core.middleware import AuthGateMiddleware
 from app.core.security import ensure_password_hash_persisted
-from app.api import status_router, actions_router, auth_gate_router, restore_router
+from app.api import (
+    status_router,
+    actions_router,
+    auth_gate_router,
+    restore_router,
+    accounts_router,
+)
 
 templates = Jinja2Templates(directory="templates")
 
@@ -153,6 +159,7 @@ def create_app() -> FastAPI:
     app.include_router(actions_router)
     app.include_router(auth_gate_router)
     app.include_router(restore_router)
+    app.include_router(accounts_router)
 
     # HTML routes
     @app.get("/", include_in_schema=False)

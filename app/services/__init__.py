@@ -3,11 +3,13 @@
 from .auth import (
     get_gmail_service,
     sign_out,
+    switch_active_account,
     check_login_status,
     get_web_auth_status,
     is_web_auth_mode,
     needs_auth_setup,
 )
+from . import accounts
 
 from .gmail import (
     # Filters

@@ -22,10 +22,14 @@ GmailCleaner.Auth = {
         if (authStatus.logged_in && authStatus.email) {
             const safeEmail = GmailCleaner.UI.escapeHtml(authStatus.email);
             userSection.innerHTML = `
-                <span class="account-email"><i class="ti ti-user-circle"></i>${safeEmail}</span>
-                <button class="btn" id="signOutBtn">Sign out</button>
+                <div class="account-switcher" id="accountSwitcher">
+                    <button class="account-trigger" id="accountTrigger" type="button">
+                        <i class="ti ti-user-circle"></i><span>${safeEmail}</span><i class="ti ti-chevron-down"></i>
+                    </button>
+                    <div class="account-dropdown hidden" id="accountDropdown"></div>
+                </div>
             `;
-            document.getElementById('signOutBtn')?.addEventListener('click', () => this.signOut());
+            this.bindAccountSwitcher();
 
             GmailCleaner.UI.showView('delete');
             this.loadLabelsForFilters();
@@ -37,6 +41,115 @@ GmailCleaner.Auth = {
             // hides behind the logged-in view instead).
             this.resetSignInButton();
             GmailCleaner.UI.showView('login');
+        }
+    },
+
+    // ----- Account switcher (Phase 4a) -----
+
+    bindAccountSwitcher() {
+        const trigger = document.getElementById('accountTrigger');
+        const dropdown = document.getElementById('accountDropdown');
+        if (!trigger || !dropdown) return;
+
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const opening = dropdown.classList.contains('hidden');
+            dropdown.classList.toggle('hidden', !opening);
+            if (opening) this.loadAccountList();
+        });
+
+        // Click-outside and Escape close the dropdown without acting,
+        // matching the filter drawer's existing dismiss pattern
+        // (senderList.js's _bindDrawer).
+        document.addEventListener('click', (e) => {
+            if (!dropdown.classList.contains('hidden') && !document.getElementById('accountSwitcher')?.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') dropdown.classList.add('hidden');
+        });
+    },
+
+    async loadAccountList() {
+        try {
+            const response = await fetch('/api/accounts');
+            const accountsList = await response.json();
+            this.renderAccountList(accountsList);
+        } catch (error) {
+            console.error('Error loading accounts:', error);
+        }
+    },
+
+    renderAccountList(accountsList) {
+        const dropdown = document.getElementById('accountDropdown');
+        if (!dropdown) return;
+        dropdown.innerHTML = '';
+
+        (accountsList || []).forEach(acc => {
+            const item = document.createElement('div');
+            item.className = 'account-dropdown-item' + (acc.active ? ' active' : '');
+            const icon = document.createElement('i');
+            icon.className = acc.active ? 'ti ti-check' : 'ti ti-user-circle';
+            const label = document.createElement('span');
+            label.textContent = acc.email;
+            item.append(icon, label);
+            if (!acc.active) {
+                item.addEventListener('click', () => this.switchAccount(acc.email));
+            }
+            dropdown.appendChild(item);
+        });
+
+        const addItem = document.createElement('div');
+        addItem.className = 'account-dropdown-item add-account';
+        addItem.innerHTML = '<i class="ti ti-plus"></i><span>Add another account</span>';
+        addItem.addEventListener('click', () => this.addAccount());
+        dropdown.appendChild(addItem);
+
+        const signOutItem = document.createElement('div');
+        signOutItem.className = 'account-dropdown-item sign-out';
+        signOutItem.innerHTML = '<i class="ti ti-logout"></i><span>Sign out</span>';
+        signOutItem.addEventListener('click', () => this.signOut());
+        dropdown.appendChild(signOutItem);
+    },
+
+    async switchAccount(email) {
+        document.getElementById('accountDropdown')?.classList.add('hidden');
+        try {
+            const response = await fetch('/api/accounts/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const result = await response.json();
+            if (!result.success) {
+                GmailCleaner.UI.showErrorToast(result.message || 'Failed to switch account');
+                return;
+            }
+            Object.values(GmailCleaner.SenderList.views).forEach(view => view.reset());
+            this.checkStatus();
+        } catch (error) {
+            GmailCleaner.UI.showErrorToast('Error switching account: ' + error.message);
+        }
+    },
+
+    async addAccount() {
+        document.getElementById('accountDropdown')?.classList.add('hidden');
+        this.setStatus('A browser tab should have opened to authorize another Google account. Complete it there - this page will update automatically.');
+        try {
+            const response = await fetch('/api/accounts/add', { method: 'POST' });
+            const result = await response.json();
+
+            if (result.error) {
+                this.clearStatus();
+                GmailCleaner.UI.showErrorToast(result.error);
+                return;
+            }
+
+            this.pollStatus();
+        } catch (error) {
+            this.clearStatus();
+            GmailCleaner.UI.showErrorToast('Error adding account: ' + error.message);
         }
     },
 
@@ -167,7 +280,7 @@ GmailCleaner.Auth = {
     },
 
     async signOut() {
-        if (!confirm('Sign out of your Gmail account?')) return;
+        if (!confirm('Sign out of this Gmail account? If you have other accounts added, one of them will become active.')) return;
 
         try {
             await fetch('/api/sign-out', { method: 'POST' });

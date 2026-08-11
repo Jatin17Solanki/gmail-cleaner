@@ -9,6 +9,12 @@ __pycache__/
 token.json
 token.json.backup
 
+# Per-account OAuth tokens + account index (Phase 4a multi-account switcher) -
+# local non-Docker layout puts these at the repo root, sibling to token.json,
+# rather than under data/
+tokens/
+accounts.json
+
 # Credentials (sensitive - keep secret!)
 credentials.json
 

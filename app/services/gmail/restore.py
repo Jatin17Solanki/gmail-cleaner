@@ -8,7 +8,7 @@ operation regardless of what kind of action created the entry: call
 `batchModify` again with `addLabelIds`/`removeLabelIds` swapped.
 """
 
-from app.services import operation_log
+from app.services import accounts, operation_log
 from app.services.auth import get_gmail_service
 
 
@@ -21,7 +21,9 @@ def restore_operation(entry_id: str) -> dict:
     Returns:
         {"success": bool, "restored": int, "message": str}
     """
-    entry = operation_log.find_entry(entry_id)
+    # Scoped to the active account (Phase 4a) so this can never replay a
+    # batchModify against message IDs that belong to a different mailbox.
+    entry = operation_log.find_entry(entry_id, account_email=accounts.get_active_account())
     if entry is None:
         return {"success": False, "restored": 0, "message": "Entry not found"}
 

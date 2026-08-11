@@ -20,6 +20,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 from app.core import settings, state
+from app.services import accounts, operation_log
 from app.services.auth_handlers import OAuthCallbackHandler
 
 logger = logging.getLogger(__name__)
@@ -65,21 +66,20 @@ def is_web_auth_mode() -> bool:
 
 
 def needs_auth_setup() -> bool:
-    """Check if authentication is needed."""
-    if os.path.exists(settings.token_file):
+    """Check if the active account needs authentication."""
+    token_path = accounts.resolve_active_token_path()
+    if token_path and os.path.exists(token_path):
         # Check if token file is empty
-        if _is_file_empty(settings.token_file):
-            logger.error(f"Token file {settings.token_file} is empty")
+        if _is_file_empty(token_path):
+            logger.error(f"Token file {token_path} is empty")
             try:
-                os.remove(settings.token_file)
+                os.remove(token_path)
             except OSError:
                 pass
             return True
 
         try:
-            creds = Credentials.from_authorized_user_file(
-                settings.token_file, settings.scopes
-            )
+            creds = Credentials.from_authorized_user_file(token_path, settings.scopes)
             if creds and (creds.valid or creds.refresh_token):
                 return False
         except (ValueError, OSError) as e:
@@ -101,11 +101,13 @@ def get_web_auth_status() -> dict:
     }
 
 
-def _try_refresh_creds(creds: Credentials) -> Credentials | None:
+def _try_refresh_creds(creds: Credentials, token_path: str) -> Credentials | None:
     """Attempt to refresh expired credentials and save to token file.
 
     Args:
         creds: Credentials that are expired but have a refresh_token.
+        token_path: Where to persist the refreshed token (the active
+            account's token file).
 
     Returns:
         Refreshed credentials if successful, None if refresh failed.
@@ -113,7 +115,7 @@ def _try_refresh_creds(creds: Credentials) -> Credentials | None:
     try:
         creds.refresh(Request())
         try:
-            with open(settings.token_file, "w") as token:
+            with open(token_path, "w") as token:
                 token.write(creds.to_json())
         except OSError:
             # Token file write failed - creds are refreshed in memory but not saved
@@ -124,7 +126,7 @@ def _try_refresh_creds(creds: Credentials) -> Credentials | None:
         logger.warning(f"Token refresh failed: {e}")
         # Clear invalid token file
         try:
-            os.remove(settings.token_file)
+            os.remove(token_path)
         except OSError:
             pass
         return None
@@ -365,13 +367,19 @@ def _wait_for_callback(
             continue
 
 
-def _run_oauth_and_save_token(creds_path: str) -> None:
+def _run_oauth_and_save_token(creds_path: str, add_new_account: bool = False) -> None:
     """Run the OAuth consent flow and persist the resulting token.
 
     Runs in its own daemon thread (see get_gmail_service()) so the web
     server stays responsive while waiting for the browser-based consent
     step. Always resets _auth_in_progress and the pending OAuth state in
     its finally block, regardless of outcome.
+
+    Args:
+        add_new_account: If True, this is the "Add another account" flow
+            (Phase 4a) - the resulting token is always saved under a new
+            email-keyed slot and switched to, never overwriting whichever
+            account was previously active.
     """
     try:
         # Try to create the OAuth flow - this will fail if credentials.json is invalid
@@ -484,9 +492,33 @@ def _run_oauth_and_save_token(creds_path: str) -> None:
         if new_creds is None:
             raise ValueError("OAuth flow completed but no credentials were obtained")
 
+        # Determine which account this token belongs to (Phase 4a) so it's
+        # saved into that account's own slot instead of always overwriting
+        # a single shared token file. Falls back to the legacy path if the
+        # profile call fails right after consent (rare) - it'll be picked
+        # up into per-account storage on the next successful profile call.
+        email = None
+        try:
+            temp_service = build("gmail", "v1", credentials=new_creds)
+            profile = temp_service.users().getProfile(userId="me").execute()
+            email = profile.get("emailAddress")
+        except Exception as e:
+            logger.warning(f"Could not determine account email after OAuth: {e}")
+
+        if email:
+            token_path = accounts.token_path_for(email)
+            accounts.register_account(email)
+            if add_new_account or accounts.get_active_account() is None:
+                accounts.set_active_account(email)
+        else:
+            token_path = settings.token_file
+
         # Save token with error handling
         try:
-            with open(settings.token_file, "w") as token:
+            token_dir = os.path.dirname(token_path)
+            if token_dir:
+                os.makedirs(token_dir, exist_ok=True)
+            with open(token_path, "w") as token:
                 token.write(new_creds.to_json())
             print("OAuth complete! Token saved.")
         except OSError as e:
@@ -554,41 +586,48 @@ def _run_oauth_and_save_token(creds_path: str) -> None:
             state.oauth_state["state"] = None
 
 
-def get_gmail_service():
+def get_gmail_service(add_new_account: bool = False):
     """Get authenticated Gmail API service.
+
+    Args:
+        add_new_account: If True (Phase 4a's "Add another account" flow),
+            ignore any existing valid credentials and always start a fresh
+            OAuth consent flow for a brand-new account, leaving whichever
+            account is currently active untouched.
 
     Returns:
         tuple: (service, error_message) - service is None if auth needed
     """
     creds = None
+    token_path = None if add_new_account else accounts.resolve_active_token_path()
 
-    if os.path.exists(settings.token_file):
+    if token_path and os.path.exists(token_path):
         # Check if token file is empty
-        if _is_file_empty(settings.token_file):
-            logger.error(f"Token file {settings.token_file} is empty")
+        if _is_file_empty(token_path):
+            logger.error(f"Token file {token_path} is empty")
             try:
-                os.remove(settings.token_file)
+                os.remove(token_path)
             except OSError:
                 pass
             creds = None
         else:
             try:
                 creds = Credentials.from_authorized_user_file(
-                    settings.token_file, settings.scopes
+                    token_path, settings.scopes
                 )
             except (ValueError, OSError) as e:
                 # Token file is corrupted or invalid
                 logger.warning(f"Failed to load credentials from token file: {e}")
                 # Delete corrupted token file
                 try:
-                    os.remove(settings.token_file)
+                    os.remove(token_path)
                 except OSError:
                     pass
                 creds = None
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds = _try_refresh_creds(creds)
+            creds = _try_refresh_creds(creds, token_path)
 
         # If creds is still None or invalid after refresh attempt, trigger OAuth
         if not creds or not creds.valid:
@@ -625,7 +664,10 @@ def get_gmail_service():
             _auth_in_progress["started_at"] = time.time()
 
             oauth_thread = threading.Thread(
-                target=_run_oauth_and_save_token, args=(creds_path,), daemon=True
+                target=_run_oauth_and_save_token,
+                args=(creds_path,),
+                kwargs={"add_new_account": add_new_account},
+                daemon=True,
             )
             oauth_thread.start()
 
@@ -647,8 +689,14 @@ def get_gmail_service():
 
     try:
         profile = service.users().getProfile(userId="me").execute()
-        state.current_user["email"] = profile.get("emailAddress", "Unknown")
+        email = profile.get("emailAddress", "Unknown")
+        state.current_user["email"] = email
         state.current_user["logged_in"] = True
+        if email and email != "Unknown" and token_path == settings.token_file:
+            # This was still the legacy, not-yet-per-account token - now
+            # that we know its email, move it into per-account storage.
+            accounts.migrate_legacy_token(email)
+            operation_log.backfill_account_email(email)
     except Exception:
         state.current_user["email"] = "Unknown"
         state.current_user["logged_in"] = True
@@ -656,62 +704,109 @@ def get_gmail_service():
     return service, None
 
 
-def sign_out() -> dict:
-    """Sign out by removing the token file."""
-    if os.path.exists(settings.token_file):
-        os.remove(settings.token_file)
+def _reset_account_scoped_state() -> None:
+    """Clear all per-account scan/result state (Phase 4a).
 
-    # Reset state
+    Shared by sign-out and account switching - either one means whatever
+    was previously scanned/selected no longer belongs to the account
+    that's about to be active (or to no account at all).
+    """
     state.current_user = {"email": None, "logged_in": False}
     state.reset_scan()
     state.reset_delete_scan()
     state.reset_mark_read()
+    state.reset_archive_scan()
+    state.reset_markread_scan()
+
+
+def sign_out() -> dict:
+    """Sign out of the active account by removing its token.
+
+    If other accounts remain registered, one of them becomes active
+    (matching "switch accounts" semantics) rather than logging the user
+    out of this instance entirely.
+    """
+    active_email = accounts.get_active_account()
+    if active_email:
+        accounts.remove_account(active_email)
+    elif os.path.exists(settings.token_file):
+        # Legacy token that was never migrated (its profile call never
+        # succeeded) - nothing else references it, just delete it.
+        os.remove(settings.token_file)
+
+    _reset_account_scoped_state()
 
     print("Signed out - results cleared")
     return {
         "success": True,
         "message": "Signed out successfully",
         "results_cleared": True,
+        "remaining_accounts": accounts.list_accounts(),
     }
 
 
+def switch_active_account(email: str) -> dict:
+    """Switch which registered account is active (Phase 4a).
+
+    No re-authentication needed - the target account must already have a
+    stored token. Clears all per-account scan/result state, same as
+    sign-out, since it belonged to the previously active account.
+    """
+    if not accounts.set_active_account(email):
+        return {"success": False, "message": "Unknown account"}
+
+    _reset_account_scoped_state()
+    return {"success": True, "message": f"Switched to {email}"}
+
+
 def check_login_status() -> dict:
-    """Check if user is logged in and get their email."""
-    if os.path.exists(settings.token_file):
+    """Check if the active account is logged in and get their email."""
+    token_path = accounts.resolve_active_token_path()
+    if token_path and os.path.exists(token_path):
         # Check if token file is empty
-        if _is_file_empty(settings.token_file):
-            logger.error(f"Token file {settings.token_file} is empty")
+        if _is_file_empty(token_path):
+            logger.error(f"Token file {token_path} is empty")
             try:
-                os.remove(settings.token_file)
+                os.remove(token_path)
             except OSError:
                 pass
         else:
             try:
                 creds = Credentials.from_authorized_user_file(
-                    settings.token_file, settings.scopes
+                    token_path, settings.scopes
                 )
                 if creds and creds.valid:
                     service = build("gmail", "v1", credentials=creds)
                     profile = service.users().getProfile(userId="me").execute()
-                    state.current_user["email"] = profile.get("emailAddress", "Unknown")
+                    email = profile.get("emailAddress", "Unknown")
+                    state.current_user["email"] = email
                     state.current_user["logged_in"] = True
+                    if email and email != "Unknown" and token_path == settings.token_file:
+                        accounts.migrate_legacy_token(email)
+                        operation_log.backfill_account_email(email)
                     return state.current_user.copy()
                 elif creds and creds.expired and creds.refresh_token:
-                    refreshed_creds = _try_refresh_creds(creds)
+                    refreshed_creds = _try_refresh_creds(creds, token_path)
                     if refreshed_creds:
                         service = build("gmail", "v1", credentials=refreshed_creds)
                         profile = service.users().getProfile(userId="me").execute()
-                        state.current_user["email"] = profile.get(
-                            "emailAddress", "Unknown"
-                        )
+                        email = profile.get("emailAddress", "Unknown")
+                        state.current_user["email"] = email
                         state.current_user["logged_in"] = True
+                        if (
+                            email
+                            and email != "Unknown"
+                            and token_path == settings.token_file
+                        ):
+                            accounts.migrate_legacy_token(email)
+                            operation_log.backfill_account_email(email)
                         return state.current_user.copy()
             except (ValueError, OSError) as e:
                 # Token file is invalid/corrupted
                 logger.warning(f"Failed to load or refresh credentials: {e}")
                 # Clear corrupted token file
                 try:
-                    os.remove(settings.token_file)
+                    os.remove(token_path)
                 except OSError:
                     pass
             except Exception as e:
