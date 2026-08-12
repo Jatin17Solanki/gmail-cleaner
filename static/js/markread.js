@@ -48,7 +48,7 @@ GmailCleaner.MarkRead = (() => {
             await fetch('/api/mark-read-bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senders: emails, filters: view.filters })
+                body: JSON.stringify({ senders: emails, filters: view.filters, excluded_message_ids: view.getExcludedMessageIds() })
             });
             await pollMarkRead();
             view.removeSendersFromResults(emails);

@@ -143,6 +143,41 @@ class TestArchiveEmailsQueryScoping:
         assert remaining == ["keep@example.com"]
 
 
+class TestArchiveEmailsExclusion:
+    """Phase 4c: per-message checkboxes exclude specific messages from an
+    otherwise sender-wide archive - query minus excluded, not an
+    include-list (see delete.py's delete_emails_bulk_background for why)."""
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_excluded_message_id_is_not_archived(self, mock_get_service):
+        service = _mock_service(
+            {"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}]}
+        )
+        mock_get_service.return_value = (service, None)
+
+        archive_emails_background(
+            ["newsletter@example.com"], excluded_message_ids=["m2"]
+        )
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        body = batch_modify.call_args.kwargs["body"]
+        assert set(body["ids"]) == {"m1", "m3"}
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_excluding_every_matched_message_archives_nothing(
+        self, mock_get_service
+    ):
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        archive_emails_background(
+            ["newsletter@example.com"], excluded_message_ids=["m1"]
+        )
+
+        service.users.return_value.messages.return_value.batchModify.assert_not_called()
+        assert operation_log.list_entries() == []
+
+
 class TestScanSendersForArchive:
     """Phase 3: Archive gets its own scan, mirroring scan_senders_for_delete
     (sender/count/subjects/dates/message_ids), independent of Delete's

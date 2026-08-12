@@ -230,7 +230,7 @@ class TestDeleteBulkEndpoint:
         response = client.post("/api/delete-emails-bulk", json={"senders": senders})
         assert response.status_code == 200
         assert response.json() == {"status": "started"}
-        mock_delete.assert_called_once_with(senders, None)
+        mock_delete.assert_called_once_with(senders, None, [])
 
     def test_delete_bulk_large_senders_list(self, client):
         """POST /api/delete-emails-bulk with many senders should succeed (no limit)."""
@@ -245,7 +245,90 @@ class TestDeleteBulkEndpoint:
         response = client.post("/api/delete-emails-bulk", json={"senders": []})
         assert response.status_code == 200
         assert response.json() == {"status": "started"}
-        mock_delete.assert_called_once_with([], None)
+        mock_delete.assert_called_once_with([], None, [])
+
+    @patch("app.api.actions.delete_emails_bulk_background")
+    def test_delete_bulk_passes_excluded_message_ids(self, mock_delete, client):
+        """Phase 4c: unchecked per-message checkboxes must reach the
+        background task so they can be excluded from the query results."""
+        senders = ["sender1@example.com"]
+        response = client.post(
+            "/api/delete-emails-bulk",
+            json={"senders": senders, "excluded_message_ids": ["m1", "m2"]},
+        )
+        assert response.status_code == 200
+        mock_delete.assert_called_once_with(senders, None, ["m1", "m2"])
+
+
+class TestArchiveBulkEndpointExclusion:
+    """Phase 4c: POST /api/archive must pass excluded_message_ids through
+    to archive_emails_background, same pattern as delete-emails-bulk."""
+
+    @patch("app.api.actions.archive_emails_background")
+    def test_archive_passes_excluded_message_ids(self, mock_archive, client):
+        senders = ["sender1@example.com"]
+        response = client.post(
+            "/api/archive",
+            json={"senders": senders, "excluded_message_ids": ["m1"]},
+        )
+        assert response.status_code == 200
+        mock_archive.assert_called_once_with(senders, None, ["m1"])
+
+    @patch("app.api.actions.archive_emails_background")
+    def test_archive_defaults_excluded_message_ids_to_empty(self, mock_archive, client):
+        senders = ["sender1@example.com"]
+        response = client.post("/api/archive", json={"senders": senders})
+        assert response.status_code == 200
+        mock_archive.assert_called_once_with(senders, None, [])
+
+
+class TestMarkReadBulkEndpointExclusion:
+    """Phase 4c: POST /api/mark-read-bulk must pass excluded_message_ids
+    through to mark_emails_as_read_bulk_background."""
+
+    @patch("app.api.actions.mark_emails_as_read_bulk_background")
+    def test_mark_read_bulk_passes_excluded_message_ids(self, mock_mark, client):
+        senders = ["sender1@example.com"]
+        response = client.post(
+            "/api/mark-read-bulk",
+            json={"senders": senders, "excluded_message_ids": ["m1"]},
+        )
+        assert response.status_code == 200
+        mock_mark.assert_called_once_with(senders, None, ["m1"])
+
+
+class TestApplyLabelEndpointExclusion:
+    """Phase 4c: POST /api/apply-label and /api/remove-label must pass
+    excluded_message_ids through, since Label is a per-row action on an
+    expanded (checkbox-bearing) sender row too."""
+
+    @patch("app.api.actions.apply_label_to_senders_background")
+    def test_apply_label_passes_excluded_message_ids(self, mock_apply, client):
+        senders = ["sender1@example.com"]
+        response = client.post(
+            "/api/apply-label",
+            json={
+                "label_id": "Label_1",
+                "senders": senders,
+                "excluded_message_ids": ["m1"],
+            },
+        )
+        assert response.status_code == 200
+        mock_apply.assert_called_once_with("Label_1", senders, None, ["m1"])
+
+    @patch("app.api.actions.remove_label_from_senders_background")
+    def test_remove_label_passes_excluded_message_ids(self, mock_remove, client):
+        senders = ["sender1@example.com"]
+        response = client.post(
+            "/api/remove-label",
+            json={
+                "label_id": "Label_1",
+                "senders": senders,
+                "excluded_message_ids": ["m1"],
+            },
+        )
+        assert response.status_code == 200
+        mock_remove.assert_called_once_with("Label_1", senders, None, ["m1"])
 
 
 class TestRequestValidation:

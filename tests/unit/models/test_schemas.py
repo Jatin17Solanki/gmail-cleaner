@@ -16,6 +16,8 @@ from app.models.schemas import (
     MarkReadScanRequest,
     MarkReadBulkRequest,
     ArchiveRequest,
+    ApplyLabelRequest,
+    RemoveLabelRequest,
     CreateRoutineRequest,
 )
 
@@ -164,6 +166,17 @@ class TestDeleteBulkRequest:
         request = DeleteBulkRequest(senders=senders)
         assert len(request.senders) == 1000
 
+    def test_excluded_message_ids_defaults_empty(self):
+        """Phase 4c: excluding nothing (the common case) needs no field."""
+        request = DeleteBulkRequest(senders=["a@example.com"])
+        assert request.excluded_message_ids == []
+
+    def test_excluded_message_ids_accepts_list(self):
+        request = DeleteBulkRequest(
+            senders=["a@example.com"], excluded_message_ids=["m1", "m2"]
+        )
+        assert request.excluded_message_ids == ["m1", "m2"]
+
 
 class TestUnsubscribeRequest:
     """Tests for UnsubscribeRequest model."""
@@ -262,6 +275,11 @@ class TestMarkReadBulkRequest:
         assert request.senders == senders
         assert request.filters.category == "promotions"
 
+    def test_excluded_message_ids_defaults_empty(self):
+        """Phase 4c: excluding nothing (the common case) needs no field."""
+        request = MarkReadBulkRequest(senders=["a@example.com"])
+        assert request.excluded_message_ids == []
+
 
 class TestArchiveRequestFilters:
     """Tests for ArchiveRequest's Phase 3 filters field."""
@@ -276,6 +294,33 @@ class TestArchiveRequestFilters:
         filters = FiltersModel(older_than="180d")
         request = ArchiveRequest(senders=["a@example.com"], filters=filters)
         assert request.filters.older_than == "180d"
+
+    def test_excluded_message_ids_defaults_empty(self):
+        """Phase 4c: excluding nothing (the common case) needs no field."""
+        request = ArchiveRequest(senders=["a@example.com"])
+        assert request.excluded_message_ids == []
+
+
+class TestApplyLabelRequestExclusion:
+    """Phase 4c: ApplyLabelRequest/RemoveLabelRequest also accept
+    excluded_message_ids, since Label is a per-row action on an expanded
+    (checkbox-bearing) sender row too."""
+
+    def test_apply_label_excluded_message_ids_defaults_empty(self):
+        request = ApplyLabelRequest(label_id="Label_1", senders=["a@example.com"])
+        assert request.excluded_message_ids == []
+
+    def test_apply_label_excluded_message_ids_accepts_list(self):
+        request = ApplyLabelRequest(
+            label_id="Label_1",
+            senders=["a@example.com"],
+            excluded_message_ids=["m1"],
+        )
+        assert request.excluded_message_ids == ["m1"]
+
+    def test_remove_label_excluded_message_ids_defaults_empty(self):
+        request = RemoveLabelRequest(label_id="Label_1", senders=["a@example.com"])
+        assert request.excluded_message_ids == []
 
 
 class TestCreateRoutineRequest:

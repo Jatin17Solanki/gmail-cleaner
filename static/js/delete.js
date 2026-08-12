@@ -119,7 +119,7 @@ GmailCleaner.Delete = (() => {
             await fetch('/api/delete-emails-bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senders: emails })
+                body: JSON.stringify({ senders: emails, excluded_message_ids: view.getExcludedMessageIds() })
             });
             await pollDeleteBulk();
             view.removeSendersFromResults(emails);

@@ -47,7 +47,7 @@ GmailCleaner.Archive = (() => {
             await fetch('/api/archive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senders: emails, filters: view.filters })
+                body: JSON.stringify({ senders: emails, filters: view.filters, excluded_message_ids: view.getExcludedMessageIds() })
             });
             await pollArchive();
             view.removeSendersFromResults(emails);

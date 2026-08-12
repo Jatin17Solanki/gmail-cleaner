@@ -111,7 +111,9 @@ Save a named preset — a list of senders, a relative age threshold, and one or 
 
 ### Per-email preview
 
-Expand any sender to see the individual matched emails (not just one sample subject line), exclude specific messages before acting, view a full email inline, or copy its subject — without leaving the app.
+**Status: Done**
+
+Expand any sender to see the individual matched emails (not just one sample subject line, with "Load more" pagination for senders with more than 20), exclude specific messages before acting, open a message directly in Gmail, or copy its subject. Also added a "Select all" checkbox to each sender-row list.
 
 ### Wireframes
 

@@ -253,6 +253,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `nav-item-disabled` class and a "Coming in a future phase" tooltip,
     which silently blocked every click - left over from before this phase
     built the real view.
+- Phase 4c: per-email preview, completing the expanded-sender-row
+  mechanism Phase 3 shipped as a shell. Two design decisions were made
+  with the human before implementing (documented here since they diverge
+  from the PRD's literal text, not just fill in an ambiguity):
+  - **The eye icon deep-links to the real Gmail web UI in a new tab**
+    (`https://mail.google.com/mail/?authuser=<email>#all/<message_id>`,
+    `window.open(..., 'noopener')`) instead of fetching/rendering the
+    message body in-app. Cheaper (zero Gmail API cost vs. 20 units/click),
+    and safer - no attacker-controlled email HTML ever touches this app's
+    origin, since Gmail's own site renders it. Requires the user already
+    be signed into that account in their browser.
+  - **Per-message checkboxes exclude, not include.** `delete_emails_bulk_background`,
+    `archive_emails_background`, `mark_emails_as_read_bulk_background`, and
+    `apply_label_to_senders_background`/`remove_label_from_senders_background`
+    all gained an `excluded_message_ids` param: the action still queries
+    Gmail fresh for everything matching the sender + active filters (as
+    before), then subtracts whatever was explicitly unchecked. An
+    include-list read of the PRD's literal wording would have silently
+    skipped any mail beyond whatever happened to be previewed, since a
+    sender can have more messages than fit on screen - that's exactly what
+    this design avoids.
+  - **Discovered while implementing, changed the pagination approach**:
+    `messages.get()` already runs for every message a scan matches (up to
+    the scan's own `limit`) to compute `count`/`total_size` - the old
+    20-subject-per-sender cap (`SUBJECTS_PER_SENDER_CAP` in
+    `delete.py`/`archive.py`/`mark_read.py`) was only discarding data
+    already fetched, not avoiding a fetch. Removed the cap entirely
+    (`subjects` now mirrors `message_ids` 1:1 for every scanned message),
+    so "Load more" pagination in the expanded row is a pure client-side
+    reveal over already-downloaded data - no new endpoint, no extra Gmail
+    API call, no extra quota cost. `senderList.js` reveals 20 rows at a
+    time via a "Load more" button.
+  - New `app/models/schemas.py` field `excluded_message_ids` on
+    `DeleteBulkRequest`, `ArchiveRequest`, `MarkReadBulkRequest`,
+    `ApplyLabelRequest`, `RemoveLabelRequest` (default `[]`); threaded
+    through `app/api/actions.py` to the corresponding background function.
+  - Mark-important is not covered - it's a single-click, whole-sender
+    toggle independent of the expand/checkbox state (no confirm step, no
+    selection dependency), so per-message exclusion doesn't fit its
+    existing interaction model.
+  - Folded in backlog item 9 ("no select-all affordance") while already
+    touching `senderList.js` for the same file, per the backlog's own note
+    that this was the natural time to pick it up. Each sender-row list
+    (Delete/Mark-as-read/Archive) gained a "Select all" checkbox above the
+    rows, with indeterminate state when some but not all rows are
+    selected.
+  - Tests: 434/434 passing (up from 411) - exclusion-semantics coverage in
+    `test_delete.py`/`test_archive.py`/`test_mark_read.py`/`test_labels.py`,
+    uncapped-subjects coverage replacing the old capped-at-20 assertion in
+    `test_delete.py`, new request-model and endpoint pass-through tests in
+    `test_schemas.py`/`test_api_actions.py`. No JS test harness exists
+    (backlog item 3, still open) - `senderList.js` and the three view
+    files were syntax-checked with `node --check` and are pending the
+    human's manual browser-driven verification pass, same precedent as
+    every prior frontend-touching phase.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

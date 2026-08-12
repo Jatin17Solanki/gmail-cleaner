@@ -135,6 +135,61 @@ class TestDeleteEmailsBulkBackgroundQueryScoping:
         assert any("from:b@example.com" in q and "older_than:90d" in q for q in queries)
 
 
+class TestDeleteEmailsBulkBackgroundExclusion:
+    """Phase 4c: per-message checkboxes in an expanded sender row exclude
+    specific messages from an otherwise sender-wide delete - query minus
+    excluded, not an include-list (see delete_emails_bulk_background's
+    docstring for why: the include-list interpretation would silently skip
+    any mail beyond whatever happened to be previewed)."""
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_excluded_message_id_is_not_deleted(self, mock_get_service):
+        service = _mock_service(
+            {"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}]}
+        )
+        mock_get_service.return_value = (service, None)
+
+        delete_emails_bulk_background(
+            ["newsletter@example.com"], excluded_message_ids=["m2"]
+        )
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        body = batch_modify.call_args.kwargs["body"]
+        assert set(body["ids"]) == {"m1", "m3"}
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_excluding_every_matched_message_leaves_nothing_deleted(
+        self, mock_get_service
+    ):
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        delete_emails_bulk_background(
+            ["newsletter@example.com"], excluded_message_ids=["m1"]
+        )
+
+        service.users.return_value.messages.return_value.batchModify.assert_not_called()
+        assert operation_log.list_entries() == []
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_excluded_id_belonging_to_another_sender_is_a_no_op(
+        self, mock_get_service
+    ):
+        """An excluded ID that never appears in this call's own query results
+        (e.g. it came from a different sender's expanded row) must not
+        affect anything - only IDs actually collected for this delete are
+        eligible to be filtered out."""
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        delete_emails_bulk_background(
+            ["newsletter@example.com"], excluded_message_ids=["unrelated-id"]
+        )
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        assert batch_modify.call_args.kwargs["body"]["ids"] == ["m1"]
+
+
 class TestScanSendersForDeletePersistsFilters:
     """The scan persists its filters so a later delete/label call can reuse them."""
 
@@ -217,13 +272,15 @@ class TestScanSendersForDeleteUnsubscribeDetection:
         assert sender["unsubscribe_type"] is None
 
 
-class TestScanSendersForDeleteSubjectCap:
-    """Phase 3: the expanded-row shell needs up to ~20 subjects per sender
-    (Phase 4c's preview cap), not the old 3 - costs no extra API calls
-    since headers are already fetched in the same batch metadata request."""
+class TestScanSendersForDeleteSubjectsUncapped:
+    """Phase 4c: subjects are stored 1:1 with message_ids, uncapped - the
+    expanded-row's "Load more" pagination is a client-side reveal over
+    already-fetched data, so the scan must not silently discard anything
+    past the old 20-per-sender preview cap. Costs no extra API calls since
+    headers are already fetched in the same batch metadata request."""
 
     @patch("app.services.gmail.delete.get_gmail_service")
-    def test_subjects_capped_at_twenty_not_three(self, mock_get_service):
+    def test_subjects_not_capped_at_twenty(self, mock_get_service):
         message_ids = [f"m{i}" for i in range(25)]
         responses = {
             mid: _message_response("newsletter@example.com", f"Subject {i}")
@@ -236,7 +293,31 @@ class TestScanSendersForDeleteSubjectCap:
 
         sender = state.delete_scan_results[0]
         assert sender["count"] == 25
-        assert len(sender["subjects"]) == 20
+        assert len(sender["subjects"]) == 25
+        assert len(sender["message_ids"]) == 25
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_subjects_align_with_message_ids_by_index(self, mock_get_service):
+        """The frontend pairs subjects[i] with message_ids[i] to wire each
+        preview row's checkbox/eye-icon to a real message ID - both lists
+        must grow in lockstep, not just end up the same length."""
+        message_ids = ["req-0", "req-1", "req-2"]
+        responses = {
+            mid: _message_response("newsletter@example.com", f"Subject-{mid}")
+            for mid in message_ids
+        }
+        service = _mock_batch_service(message_ids, responses)
+        mock_get_service.return_value = (service, None)
+
+        scan_senders_for_delete(limit=3)
+
+        sender = state.delete_scan_results[0]
+        # _message_response encodes the subject into the response's own
+        # "id" field (id = f"msg-{subject}") - since process_message reads
+        # both msg_id and subject from that same response object, this
+        # holding true for every pair is exactly what "lockstep" means.
+        for msg_id, subject in zip(sender["message_ids"], sender["subjects"]):
+            assert msg_id == f"msg-{subject}"
 
 
 class TestDeleteEmailsWritesOperationLog:

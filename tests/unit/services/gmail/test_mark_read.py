@@ -143,6 +143,39 @@ class TestMarkReadBulkQueryScoping:
         assert remaining == ["keep@example.com"]
 
 
+class TestMarkReadBulkExclusion:
+    """Phase 4c: per-message checkboxes exclude specific messages from an
+    otherwise sender-wide mark-as-read - query minus excluded, not an
+    include-list (see delete.py's delete_emails_bulk_background for why)."""
+
+    @patch("app.services.gmail.mark_read.get_gmail_service")
+    def test_excluded_message_id_is_not_marked(self, mock_get_service):
+        service = _mock_service(
+            {"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}]}
+        )
+        mock_get_service.return_value = (service, None)
+
+        mark_emails_as_read_bulk_background(
+            ["newsletter@example.com"], excluded_message_ids=["m2"]
+        )
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        body = batch_modify.call_args.kwargs["body"]
+        assert set(body["ids"]) == {"m1", "m3"}
+
+    @patch("app.services.gmail.mark_read.get_gmail_service")
+    def test_excluding_every_matched_message_marks_nothing(self, mock_get_service):
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        mark_emails_as_read_bulk_background(
+            ["newsletter@example.com"], excluded_message_ids=["m1"]
+        )
+
+        service.users.return_value.messages.return_value.batchModify.assert_not_called()
+        assert operation_log.list_entries() == []
+
+
 class TestScanSendersForMarkread:
     """Phase 3: Mark-as-read gets its own sender-row list scan, mirroring
     scan_senders_for_delete/scan_senders_for_archive, always scoped to

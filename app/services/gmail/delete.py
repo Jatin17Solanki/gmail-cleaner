@@ -21,11 +21,11 @@ from app.services.gmail.helpers import (
 )
 
 # Phase 3: Unsubscribe is a per-row action on the merged Delete view, not
-# its own tab — cap how many subject lines we keep per sender for the
-# expanded-row shell (message-level detail is capped at ~20 per PRD
-# Section 6 Phase 4c; costs nothing extra since headers are already
-# fetched in the same batch metadata call).
-SUBJECTS_PER_SENDER_CAP = 20
+# its own tab. Subjects are stored 1:1 with message_ids for every scanned
+# message of a sender (no cap) — messages.get() already ran for each one
+# during the scan, so this costs nothing extra; the ~20-per-page reveal in
+# the expanded-row UI (Phase 4c) is a client-side pagination choice over
+# already-fetched data, not a data-fetching cap.
 
 logger = logging.getLogger(__name__)
 
@@ -144,11 +144,7 @@ def scan_senders_for_delete(limit: int = 1000, filters: Optional[dict] = None):
                 sender_counts[sender_email]["email"] = sender_email
                 sender_counts[sender_email]["message_ids"].append(msg_id)
                 sender_counts[sender_email]["total_size"] += size_estimate
-                if (
-                    len(sender_counts[sender_email]["subjects"])
-                    < SUBJECTS_PER_SENDER_CAP
-                ):
-                    sender_counts[sender_email]["subjects"].append(subject)
+                sender_counts[sender_email]["subjects"].append(subject)
                 if unsub_link:
                     sender_counts[sender_email]["unsubscribe_link"] = unsub_link
                     sender_counts[sender_email]["unsubscribe_type"] = unsub_type
@@ -391,7 +387,9 @@ def delete_emails_bulk(senders: list[str], filters: Optional[dict] = None) -> di
 
 
 def delete_emails_bulk_background(
-    senders: list[str], filters: Optional[dict] = None
+    senders: list[str],
+    filters: Optional[dict] = None,
+    excluded_message_ids: Optional[list[str]] = None,
 ) -> None:
     """Delete emails from multiple senders with progress updates (background task).
 
@@ -402,6 +400,12 @@ def delete_emails_bulk_background(
         filters: Filters that were active in the scan that surfaced these
             senders (see build_gmail_query) — deletion stays scoped to the
             filtered subset the user reviewed (#107).
+        excluded_message_ids: Message IDs to leave untouched even though
+            they match the sender+filters query — the per-message checkboxes
+            in an expanded sender row (Phase 4c). Query-minus-excluded, not
+            an include-list: everything matching still gets deleted except
+            what was explicitly unchecked, so mail beyond what happened to
+            be previewed isn't silently skipped.
     """
     state.reset_delete_bulk()
 
@@ -461,6 +465,10 @@ def delete_emails_bulk_background(
             all_message_ids.extend([msg["id"] for msg in messages])
         except Exception as e:
             errors.append(f"{sender}: {str(e)}")
+
+    if excluded_message_ids:
+        excluded = set(excluded_message_ids)
+        all_message_ids = [m for m in all_message_ids if m not in excluded]
 
     if not all_message_ids:
         state.delete_bulk_status["progress"] = 100
