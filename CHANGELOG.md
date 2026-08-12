@@ -432,6 +432,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     tracked in git), corrected the "100 emails per API call" claim to 25
     to match the current quota-clamped batch size, and linked
     `ARCHITECTURE.md` from the Contributing section.
+  - Added a screenshot gallery to the README (`media/screenshots/`),
+    replacing the wireframes-only reference (GitHub renders `wireframes/
+    *.html` links as plain source, not previews) with a redacted
+    walkthrough of the real running app, in user-journey order (filter →
+    scan → per-email preview → act → undo via Restore → automate via
+    Routines). Account email and any job-search-specific sender content
+    were cropped/redacted before committing.
+  - A full live E2E pass against a real account (`claude-in-chrome`,
+    human-supervised, real delete/archive/mark-read/label/routine actions
+    each immediately verified and reversed via Restore) surfaced three
+    real, previously-undetected bugs in code that predates this branch,
+    fixed here per the human's explicit request:
+    - **Selection-bar summary went stale after excluding a message.**
+      Selecting a sender then unchecking one of its previewed messages
+      left the bottom bar's "N emails selected" text showing the old,
+      pre-exclusion count - `getSelectedCount()` itself already computed
+      the corrected number (used correctly by Delete's confirm dialog),
+      but nothing ever re-ran `_updateSelectionBar()` when a per-message
+      checkbox changed, only when the sender-level checkbox did. Fixed by
+      adding a `change` listener to each message checkbox in
+      `senderList.js::_buildMessageRow()`.
+    - **An invalid scan filter failed silently.** A sender filter value
+      that isn't a full email/domain (e.g. `google` instead of
+      `google.com`) is correctly rejected by the backend with a 422, but
+      `senderList.js::scan()` never checked `response.ok` before polling
+      for results - a rejected scan just left whatever status the
+      *previous* scan set in place, so the UI silently redisplayed stale
+      results with no error shown. Fixed by checking `response.ok` and
+      surfacing the backend's validation message via the existing error
+      toast.
+    - **Delete's confirm step used a native `window.confirm()`**, the only
+      confirmation surface in the app not using the design system's own
+      `.modal-overlay` pattern (already used by Routines' run-confirm
+      step). Functioned correctly for real users but is visually
+      inconsistent with the rest of the app and froze this session's
+      browser-automation testing (native dialogs block all further CDP
+      commands). Replaced with an in-app modal
+      (`{{ prefix }}ConfirmOverlay`, added as an opt-in
+      `show_delete_confirm_modal` parameter on the shared `sender_view`
+      Jinja macro so it stays Delete-only) - same summary text, same
+      Cancel/Delete actions, no native dialog.
+  - Also confirmed working end-to-end against the real account and not
+    otherwise changed: scan/filter/select-all/per-message exclude across
+    Delete/Archive/Mark-as-read, the Gmail deep-link (closes out Phase
+    4c's previously-unverified assumption - opens the correct message in
+    the correct signed-in account), delete/archive/mark-read/label-add
+    each followed by a Restore, and Routines create → preview → run →
+    Restore (36 real messages, cleanly undone). Quota-aware retry pacing
+    (Phase 4a2) was observed firing live under real rate-limiting.
+  - **Investigated, not reproduced**: the Restore/Routines "no scrolling"
+    report. With 6+ real overflowing entries in both tabs, `.list-area`'s
+    internal scroll worked correctly in this session's browser/viewport
+    (confirmed via `scrollTop`, not just visually - the container itself
+    scrolled, the page body did not). No code change made; left for the
+    human to re-test in their own environment before anyone guess-fixes
+    CSS that isn't observably broken.
+  - **Known gap, not addressed this round**: account-switching couldn't be
+    exercised in this session's E2E pass - only one account was
+    registered/signed in, by explicit instruction, to keep the session
+    scoped to a single known-safe test account.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

@@ -121,11 +121,24 @@ class SenderListView {
         this._scanReadyAtMs = null;
 
         try {
-            await fetch(this.scanEndpoint, {
+            const startResp = await fetch(this.scanEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ limit, filters: this.filters })
             });
+            if (!startResp.ok) {
+                // fetch() only rejects on a network failure, not a non-2xx
+                // status - a rejected filter (e.g. an invalid sender value)
+                // otherwise never starts a scan, so the poll below would just
+                // report whatever the *previous* scan's status was, silently
+                // showing stale results with no indication anything failed.
+                const body = await startResp.json().catch(() => null);
+                const detail = body?.detail;
+                const message = Array.isArray(detail)
+                    ? detail.map(d => d.msg).filter(Boolean).join('; ')
+                    : (detail || `Scan request failed (${startResp.status})`);
+                throw new Error(message);
+            }
             await this._pollScanStatus(progressText, 0, eta, etaText);
             const resultsResp = await fetch(this.scanResultsEndpoint);
             this.results = await resultsResp.json();
@@ -431,6 +444,12 @@ class SenderListView {
         checkbox.checked = checked;
         checkbox.dataset.messageId = messageId;
         checkbox.title = 'Uncheck to exclude this message from the next bulk action on this sender';
+        // Excluding/re-including a message changes what a pending bulk
+        // action actually covers - the selection-bar summary (and Delete's
+        // confirm dialog, which reads the same getSelectedCount()) must
+        // reflect that immediately, not just at the next sender-checkbox
+        // toggle.
+        checkbox.addEventListener('change', () => this._updateSelectionBar());
 
         const subjectSpan = document.createElement('span');
         subjectSpan.className = 'message-subject';
