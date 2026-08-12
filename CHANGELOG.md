@@ -492,6 +492,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     exercised in this session's E2E pass - only one account was
     registered/signed in, by explicit instruction, to keep the session
     scoped to a single known-safe test account.
+- Full README revamp, at the human's explicit direction, on this same
+  branch: a table of contents, a rewritten Features section (reflects
+  today's actual feature set - Restore, Routines, multi-account, quota
+  awareness, login gate - not the pre-fork one that was still just "Bulk
+  Unsubscribe" framed), reordered sections, toned-down screenshot
+  captions, the Roadmap condensed into one scannable table (was six
+  separate prose sections duplicating `CHANGELOG.md`), a new Architecture
+  section pointing at `ARCHITECTURE.md`, "Need Help Setting Up" rewritten
+  in third person and linking to the original author's own offer instead
+  of duplicating his pitch/email in this fork's own voice, an updated FAQ
+  (the multi-account entry was stale - described sign-out/sign-in instead
+  of the real account switcher; added an `APP_PASSWORD`/login-gate entry
+  that didn't exist before at all), and a shortened `Credits` section.
+  The Wireframes section was folded into a one-line Contributing pointer
+  rather than staying its own section.
+- Two real correctness issues found and fixed while reviewing the README
+  for accuracy: Setup's `git clone` command pointed at the upstream repo
+  (`Gururagavendra/gmail-cleaner`) instead of this fork
+  (`Jatin17Solanki/gmail-cleaner`), and `docker-compose.yml` defaulted to
+  pulling upstream's published image - silently running the *original*
+  app for anyone who just followed the README, missing every fix/feature
+  from Phases 1 through 4c, since this fork doesn't publish its own image
+  yet. `docker-compose.yml` now builds locally by default, with clearly
+  commented-out placeholders for both this fork's own image (once
+  published) and upstream's image as an explicit, labeled alternative.
+- Restored a small "Support project" link to the app's sidebar, pointing
+  to the original author's own Buy Me a Coffee page
+  (`buymeacoffee.com/gururagavendra`) - present in the pre-fork UI (a
+  "Support Project" button, same destination), lost as incidental
+  collateral of Phase 3's full CSS/template rewrite rather than a
+  deliberate removal. New `.sidebar-support-link` in `app.css`,
+  deliberately quiet styling (muted color, small text) rather than a
+  prominent CTA, sitting at the bottom of the sidebar via a new `flex: 1`
+  on `.nav-menu`.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases
