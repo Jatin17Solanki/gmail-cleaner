@@ -508,6 +508,19 @@ body {
   gap: 8px;
 }
 
+/* ----- Routines list (Phase 4b) -----
+   #routinesList's rows are plain divs appended without their own layout,
+   so consecutive .row elements had no gap between them (unlike
+   .restore-list, which is a flex column with `gap` - .list-area's own gap
+   only applies between its direct children, not routine rows nested
+   inside #routinesList). Same fix, applied here too. */
+
+#routinesList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ----- Centered confirm modal (Phase 4b: Routine run confirm) -----
    Same full-coverage/dimming approach as .drawer-overlay above, but
    centered instead of right-anchored - matches wireframes/

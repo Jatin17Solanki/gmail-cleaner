@@ -261,6 +261,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Two UI polish issues found during the human's manual review of the
+  Phase 4b (Routines) PR.** (1) The "New routine" form card was left-
+  aligned instead of centered - `#routinesFormSection` (a flex column,
+  same as every other `.list-area`) defaults to `align-items: stretch`,
+  and the card's own `max-width: 420px` capped its width without
+  centering it in the leftover space. Fixed by setting
+  `align-items: center` on the section and `width: 100%` on the card so
+  it reliably fills up to its max-width before centering. (2) Routine
+  list rows visually touched/overlapped with no gap between them, unlike
+  the Restore tab's list items - `#routinesList`'s rows are plain `<div>`s
+  appended with no layout of their own, so `.list-area`'s `gap` (which
+  only applies between its own direct children) never reached them. Fixed
+  by giving `#routinesList` the same `display: flex; flex-direction:
+  column; gap: 8px` `.restore-list` already uses.
 - **Scan ETA message kept creeping forward instead of staying fixed.**
   Found by the human immediately after the scan time estimate feature
   shipped: `senderList.js`'s `formatEta()` computed
