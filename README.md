@@ -205,9 +205,20 @@ cd gmail-cleaner
 
 3. Put your `credentials.json` file in the project folder.
 
-### 3. (Optional) Protect the app with a password
+### 3. (Optional) Configuration via `.env`
 
-If this instance will be reachable by anyone other than you (e.g. on a home server), set `APP_PASSWORD` to gate the whole app — login page, every action — behind a single shared password. Leave it unset and there's no login screen at all. See `docker-compose.yml`'s commented-out example, or set it as an environment variable for the local Python option.
+Everything below is optional — skip this if you just want the defaults.
+
+- **Docker**: set any of these in `docker-compose.yml`'s `environment:` block (already has commented-out examples for each).
+- **Local (Python)**: copy [`.env.example`](.env.example) to `.env` and fill in what you need — it's loaded automatically, and gitignored so it never gets committed.
+
+| Variable | What it does |
+|---|---|
+| `APP_PASSWORD` | Gates the whole app — login page, every action — behind a single shared password. Unset = no login screen at all. Recommended if this instance is reachable by anyone other than you. |
+| `WEB_AUTH` | Use the manual "copy the OAuth URL from logs" sign-in flow instead of auto-opening a browser tab. Needed for Docker/remote-server setups (already `true` in `docker-compose.yml`); leave unset for local/desktop use. |
+| `OAUTH_HOST` | Custom hostname for the OAuth redirect URI — only for a custom domain/remote server. See [Advanced Configuration](#advanced-configuration). |
+| `OAUTH_EXTERNAL_PORT` | External port for the OAuth callback if you're mapping Docker ports to something other than 8767. |
+| `QUOTA_TRACE_LOGGING` | Debug aid — logs every Gmail API call the quota tracker charges. Off by default, only useful if you're diagnosing scan pacing yourself. |
 
 ## Usage
 
