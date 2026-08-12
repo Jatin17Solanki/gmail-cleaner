@@ -133,6 +133,7 @@ async def api_mark_read_bulk(
         mark_emails_as_read_bulk_background,
         request.senders,
         _filters_dict(request.filters),
+        request.excluded_message_ids,
     )
     return {"status": "started"}
 
@@ -173,7 +174,10 @@ async def api_delete_emails_bulk(
 ):
     """Delete emails from multiple senders (background task with progress)."""
     background_tasks.add_task(
-        delete_emails_bulk_background, request.senders, state.delete_scan_filters
+        delete_emails_bulk_background,
+        request.senders,
+        state.delete_scan_filters,
+        request.excluded_message_ids,
     )
     return {"status": "started"}
 
@@ -248,6 +252,7 @@ async def api_apply_label(
         request.label_id,
         request.senders,
         _filters_dict(request.filters),
+        request.excluded_message_ids,
     )
     return {"status": "started"}
 
@@ -273,6 +278,7 @@ async def api_remove_label(
         request.label_id,
         request.senders,
         _filters_dict(request.filters),
+        request.excluded_message_ids,
     )
     return {"status": "started"}
 
@@ -298,7 +304,10 @@ async def api_archive(request: ArchiveRequest, background_tasks: BackgroundTasks
             detail="At least one sender is required",
         )
     background_tasks.add_task(
-        archive_emails_background, request.senders, _filters_dict(request.filters)
+        archive_emails_background,
+        request.senders,
+        _filters_dict(request.filters),
+        request.excluded_message_ids,
     )
     return {"status": "started"}
 

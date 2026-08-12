@@ -429,3 +429,63 @@ def run_batched_gets(
         max_retry_passes,
         label,
     )
+
+
+def fetch_true_sender_totals(
+    service,
+    senders: list[dict],
+    filters: Optional[dict],
+    status_dict: Optional[dict] = None,
+    label: str = "messages.list (true total)",
+) -> None:
+    """Fill in `total_count` on each sender dict, in place, with an *exact*
+    count of messages matching that sender + the active filters.
+
+    A scan's own `count` field only reflects how many of a sender's messages
+    fell within the scanned window (limited by the scan's own `limit`) - it
+    can badly understate a sender's true mail volume, which is misleading
+    right where a user decides whether to delete/archive/mark a sender.
+
+    Counts by paginating messages.list() to exhaustion - the same pattern
+    the actual bulk-action functions already use - rather than reading
+    Gmail's resultSizeEstimate field. That field is documented by Google as
+    an *estimate*, not an exact count, and was found in real use to inflate
+    badly enough to be actively untrustworthy (a real repro during review:
+    37 senders summed to a "total" of 7,437 emails, exceeding the account's
+    actual inbox size). messages.list is a flat 5 units per call regardless
+    of how many results a page returns, so this costs the same as the
+    estimate approach for any sender under 500 matching messages (the
+    common case) - it only scales up for senders with genuinely large mail
+    volumes, which is exactly where an accurate number matters most anyway.
+
+    A per-sender failure falls back to that sender's already-known sampled
+    count rather than aborting the scan - the UI still works, just without
+    the corrected number for that one sender.
+    """
+    from app.services.gmail.helpers import build_gmail_query
+
+    for sender_data in senders:
+        try:
+            query_filters = dict(filters or {})
+            query_filters["sender"] = sender_data["email"]
+            query = build_gmail_query(query_filters)
+            total = 0
+            page_token = None
+            while True:
+                result = execute_with_backoff(
+                    service.users()
+                    .messages()
+                    .list(
+                        userId="me", q=query, maxResults=500, pageToken=page_token
+                    ),
+                    COST["messages.list"],
+                    status_dict,
+                    label=label,
+                )
+                total += len(result.get("messages", []))
+                page_token = result.get("nextPageToken")
+                if not page_token:
+                    break
+            sender_data["total_count"] = total
+        except Exception:
+            sender_data["total_count"] = sender_data["count"]

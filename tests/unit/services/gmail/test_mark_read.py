@@ -143,6 +143,84 @@ class TestMarkReadBulkQueryScoping:
         assert remaining == ["keep@example.com"]
 
 
+class TestMarkReadBulkExclusion:
+    """Phase 4c: per-message checkboxes exclude specific messages from an
+    otherwise sender-wide mark-as-read - query minus excluded, not an
+    include-list (see delete.py's delete_emails_bulk_background for why)."""
+
+    @patch("app.services.gmail.mark_read.get_gmail_service")
+    def test_excluded_message_id_is_not_marked(self, mock_get_service):
+        service = _mock_service(
+            {"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}]}
+        )
+        mock_get_service.return_value = (service, None)
+
+        mark_emails_as_read_bulk_background(
+            ["newsletter@example.com"], excluded_message_ids=["m2"]
+        )
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        body = batch_modify.call_args.kwargs["body"]
+        assert set(body["ids"]) == {"m1", "m3"}
+
+    @patch("app.services.gmail.mark_read.get_gmail_service")
+    def test_excluding_every_matched_message_marks_nothing(self, mock_get_service):
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        mark_emails_as_read_bulk_background(
+            ["newsletter@example.com"], excluded_message_ids=["m1"]
+        )
+
+        service.users.return_value.messages.return_value.batchModify.assert_not_called()
+        assert operation_log.list_entries() == []
+
+
+class TestScanSendersForMarkreadTrueTotals:
+    """Phase 4c follow-up: a sender's `count` only reflects the scanned
+    window - the scan also fetches the real, exact total (by paginating
+    messages.list() to exhaustion, not Gmail's unreliable
+    resultSizeEstimate field, scoped to unread mail same as the scan
+    itself) so the UI isn't showing a number that understates what
+    mark-as-read would actually affect."""
+
+    @patch("app.services.gmail.mark_read.get_gmail_service")
+    def test_scan_result_includes_total_count(self, mock_get_service):
+        response = _message_response("digest@example.com", "Daily digest")
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {"messages": [{"id": "m1"}]},
+            {"messages": [{"id": f"m{i}"} for i in range(24)]},
+        ]
+
+        scan_senders_for_markread(limit=10)
+
+        sender = state.markread_scan_results[0]
+        assert sender["count"] == 1
+        assert sender["total_count"] == 24
+
+    @patch("app.services.gmail.mark_read.get_gmail_service")
+    def test_true_total_query_is_scoped_to_unread(self, mock_get_service):
+        """The true-count pass must reuse query_filters (unread_only=True),
+        not the raw filters - otherwise it would count all mail from the
+        sender, not just unread, which is what this view actually acts on."""
+        response = _message_response("digest@example.com", "Daily digest")
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {"messages": [{"id": "m1"}]},
+            {"messages": [{"id": f"m{i}"} for i in range(24)]},
+        ]
+
+        scan_senders_for_markread(limit=10)
+
+        list_call = service.users.return_value.messages.return_value.list
+        total_count_query = list_call.call_args_list[-1].kwargs["q"]
+        assert "is:unread" in total_count_query
+        assert "from:digest@example.com" in total_count_query
+
+
 class TestScanSendersForMarkread:
     """Phase 3: Mark-as-read gets its own sender-row list scan, mirroring
     scan_senders_for_delete/scan_senders_for_archive, always scoped to

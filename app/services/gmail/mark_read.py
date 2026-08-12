@@ -16,9 +16,10 @@ from app.services.gmail.helpers import build_gmail_query, get_sender_info, get_s
 
 # Phase 3: Mark as read gets its own sender-row list (previously just an
 # aggregate unread count + a blind "mark N most recent" picker), mirroring
-# scan_senders_for_delete/scan_senders_for_archive. Same ~20 subject/
-# message-preview cap as the other two scans (Phase 4c).
-SUBJECTS_PER_SENDER_CAP = 20
+# scan_senders_for_delete/scan_senders_for_archive. Subjects are stored 1:1
+# with message_ids, uncapped (see delete.py's equivalent comment) — Phase
+# 4c's expanded-row pagination is a client-side reveal over this
+# already-fetched data.
 
 
 def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None):
@@ -134,11 +135,7 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
                 sender_counts[sender_email]["email"] = sender_email
                 sender_counts[sender_email]["message_ids"].append(msg_id)
                 sender_counts[sender_email]["total_size"] += size_estimate
-                if (
-                    len(sender_counts[sender_email]["subjects"])
-                    < SUBJECTS_PER_SENDER_CAP
-                ):
-                    sender_counts[sender_email]["subjects"].append(subject)
+                sender_counts[sender_email]["subjects"].append(subject)
 
                 if email_date:
                     if sender_counts[sender_email]["first_date"] is None:
@@ -174,6 +171,18 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
             reverse=True,
         )
 
+        state.markread_scan_status["message"] = "Fetching total counts..."
+        # Reuses query_filters (already carries unread_only=True) so the
+        # true count stays scoped to unread mail, same as the scan itself -
+        # not every message ever received from this sender.
+        quota.fetch_true_sender_totals(
+            service,
+            sorted_senders,
+            query_filters,
+            state.markread_scan_status,
+            label="messages.list (markread total count)",
+        )
+
         state.markread_scan_results = sorted_senders
         state.markread_scan_status["message"] = f"Found {len(sorted_senders)} senders"
         state.markread_scan_status["done"] = True
@@ -194,7 +203,9 @@ def get_markread_scan_results() -> list:
 
 
 def mark_emails_as_read_bulk_background(
-    senders: list[str], filters: Optional[dict] = None
+    senders: list[str],
+    filters: Optional[dict] = None,
+    excluded_message_ids: Optional[list[str]] = None,
 ) -> None:
     """Mark unread emails as read for selected senders (background task).
 
@@ -203,6 +214,10 @@ def mark_emails_as_read_bulk_background(
         filters: Filters that were active in the scan that surfaced these
             senders (see build_gmail_query) — marking stays scoped to the
             filtered subset the user reviewed (#107 pattern).
+        excluded_message_ids: Message IDs to leave untouched even though
+            they match the sender+filters query — see delete.py's
+            delete_emails_bulk_background for the query-minus-excluded
+            reasoning (Phase 4c).
     """
     state.reset_mark_read()
 
@@ -223,6 +238,7 @@ def mark_emails_as_read_bulk_background(
     marked_ids: list[str] = []
     try:
         total_marked = 0
+        excluded = set(excluded_message_ids) if excluded_message_ids else None
 
         for i, sender in enumerate(senders):
             state.mark_read_status["current_sender"] = i + 1
@@ -251,6 +267,9 @@ def mark_emails_as_read_bulk_background(
                 page_token = result.get("nextPageToken")
                 if not page_token:
                     break
+
+            if excluded:
+                message_ids = [m for m in message_ids if m not in excluded]
 
             if not message_ids:
                 continue

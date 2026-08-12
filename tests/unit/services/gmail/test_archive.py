@@ -143,6 +143,65 @@ class TestArchiveEmailsQueryScoping:
         assert remaining == ["keep@example.com"]
 
 
+class TestArchiveEmailsExclusion:
+    """Phase 4c: per-message checkboxes exclude specific messages from an
+    otherwise sender-wide archive - query minus excluded, not an
+    include-list (see delete.py's delete_emails_bulk_background for why)."""
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_excluded_message_id_is_not_archived(self, mock_get_service):
+        service = _mock_service(
+            {"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}]}
+        )
+        mock_get_service.return_value = (service, None)
+
+        archive_emails_background(
+            ["newsletter@example.com"], excluded_message_ids=["m2"]
+        )
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        body = batch_modify.call_args.kwargs["body"]
+        assert set(body["ids"]) == {"m1", "m3"}
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_excluding_every_matched_message_archives_nothing(
+        self, mock_get_service
+    ):
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        archive_emails_background(
+            ["newsletter@example.com"], excluded_message_ids=["m1"]
+        )
+
+        service.users.return_value.messages.return_value.batchModify.assert_not_called()
+        assert operation_log.list_entries() == []
+
+
+class TestScanSendersForArchiveTrueTotals:
+    """Phase 4c follow-up: a sender's `count` only reflects the scanned
+    window - the scan also fetches the real, exact total (by paginating
+    messages.list() to exhaustion, not Gmail's unreliable
+    resultSizeEstimate field) so the UI isn't showing a number that
+    understates what an archive would actually affect."""
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_scan_result_includes_total_count(self, mock_get_service):
+        response = _message_response("promo@example.com", "Sale")
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {"messages": [{"id": "m1"}]},
+            {"messages": [{"id": f"m{i}"} for i in range(87)]},
+        ]
+
+        scan_senders_for_archive(limit=10)
+
+        sender = state.archive_scan_results[0]
+        assert sender["count"] == 1
+        assert sender["total_count"] == 87
+
+
 class TestScanSendersForArchive:
     """Phase 3: Archive gets its own scan, mirroring scan_senders_for_delete
     (sender/count/subjects/dates/message_ids), independent of Delete's

@@ -9,13 +9,32 @@
  * action buttons in the bottom bar) and owns whatever is genuinely
  * view-specific (the bulk action itself).
  *
- * Expand/collapse ships as a shell only (Phase 3), not the full Phase 4c
- * mechanism: message sub-rows show real subjects (the scan already widens
- * its subject cap to ~20 for this), but the eye icon is inert and
- * per-message checkboxes don't yet scope the bulk action - seePROGRESS.md.
+ * Phase 4c: the expanded sender row is the full mechanism, not just a
+ * shell. The scan already fetches every matched message's subject (no
+ * server-side cap - see delete.py/archive.py/mark_read.py), so "Load more"
+ * is a pure client-side reveal over already-downloaded data, no extra
+ * network call. Per-message checkboxes are real: unchecking one excludes
+ * that message ID from the next bulk action on its sender (see
+ * getExcludedMessageIds()). The eye icon opens the message in the user's
+ * real Gmail web UI in a new tab (a plain deep link using the message's
+ * own ID) rather than fetching/rendering the body in-app - no extra Gmail
+ * API cost, and no attacker-controlled HTML ever touches this app's origin.
  */
 
 window.GmailCleaner = window.GmailCleaner || {};
+
+// How many message sub-rows to reveal per "Load more" click, in an
+// expanded sender row. Purely a rendering page size - the scan already
+// has every matched message's subject/id in memory (see module comment
+// above), so this doesn't gate what data exists, only how much of it is
+// in the DOM at once.
+const MESSAGE_PAGE_SIZE = 20;
+
+// Shown once per page load (not once per tab) the first time any eye icon
+// is clicked, across Delete/Archive/Mark-as-read alike - a reminder, not a
+// blocking check, since a not-signed-in click just lands on Gmail's own
+// account picker rather than failing silently.
+let hasShownGmailSignInHint = false;
 
 GmailCleaner.SenderList = {
     views: {},
@@ -70,6 +89,7 @@ class SenderListView {
 
         this._bindScan();
         this._bindDrawer();
+        this._bindSelectAll();
     }
 
     id(suffix) {
@@ -176,6 +196,9 @@ class SenderListView {
         rowsContainer.innerHTML = '';
         this.expanded.clear();
 
+        const selectAllBar = this.id('SelectAllBar');
+        const selectAllCb = this.id('SelectAllCb');
+
         if (this.results.length === 0) {
             emptyState?.classList.remove('hidden');
             if (emptyState) {
@@ -184,14 +207,56 @@ class SenderListView {
                 if (h2) h2.textContent = this.emptyAfterScanTitle;
                 if (p) p.textContent = this.emptyAfterScanBody;
             }
+            selectAllBar?.classList.add('hidden');
         } else {
             emptyState?.classList.add('hidden');
             this.results.forEach(sender => {
                 rowsContainer.appendChild(this._buildRow(sender));
             });
+            selectAllBar?.classList.remove('hidden');
+        }
+        if (selectAllCb) {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = false;
         }
 
         this._updateSelectionBar();
+    }
+
+    // Sets a sender row's own checkbox and cascades to its (possibly not
+    // yet built) message checkboxes - the one place that does both, so
+    // select-all (which sets .row-select-cb.checked programmatically, which
+    // never fires 'change') and a direct click on the row checkbox (which
+    // does) stay consistent with each other.
+    _setRowSelected(row, checked) {
+        const cb = row.querySelector('.row-select-cb');
+        if (cb) cb.checked = checked;
+        this._syncMessageCheckboxes(row, checked);
+    }
+
+    // "Select all" toggles every sender's row checkbox at once - e.g.
+    // "delete everything except a few senders" otherwise means checking
+    // dozens of boxes individually (PROGRESS.md backlog item 9).
+    _bindSelectAll() {
+        this.id('SelectAllCb')?.addEventListener('change', (e) => {
+            const checked = e.target.checked;
+            this.id('Rows').querySelectorAll('.sender-row').forEach(row => {
+                this._setRowSelected(row, checked);
+            });
+            this._updateSelectionBar();
+        });
+    }
+
+    // Keeps the header checkbox in sync with the individual rows: checked
+    // when every row is selected, indeterminate when some but not all are,
+    // unchecked when none are.
+    _syncSelectAllCheckbox() {
+        const selectAllCb = this.id('SelectAllCb');
+        if (!selectAllCb) return;
+        const rows = [...this.id('Rows').querySelectorAll('.row-select-cb')];
+        const checkedCount = rows.filter(cb => cb.checked).length;
+        selectAllCb.checked = rows.length > 0 && checkedCount === rows.length;
+        selectAllCb.indeterminate = checkedCount > 0 && checkedCount < rows.length;
     }
 
     _buildRow(sender) {
@@ -200,9 +265,18 @@ class SenderListView {
         row.className = 'row sender-row';
         row.dataset.email = sender.email;
 
+        // total_count (Gmail's own resultSizeEstimate for sender+filters) is
+        // the real number an action will affect - count is only how many
+        // fell within the scanned window, which can badly understate it for
+        // a sender with more mail than the scan looked through. Never show
+        // a total below what the scan already confirmed exists.
+        const total = Math.max(sender.total_count ?? sender.count, sender.count);
+        const countLabel = total > sender.count
+            ? `${sender.count} shown of ${total} total emails`
+            : `${total} emails`;
         const subtitle = this.showSubjectPreview && sender.subjects && sender.subjects[0]
-            ? `${sender.count} emails · ${esc(sender.subjects[0])}`
-            : `${sender.count} emails`;
+            ? `${countLabel} · ${esc(sender.subjects[0])}`
+            : countLabel;
 
         let unsubHtml = '';
         if (this.showUnsubscribe) {
@@ -237,7 +311,13 @@ class SenderListView {
             <div class="sender-row-detail hidden"></div>
         `;
 
-        row.querySelector('.row-select-cb')?.addEventListener('change', () => this._updateSelectionBar());
+        row.querySelector('.row-select-cb')?.addEventListener('change', (e) => {
+            this._syncMessageCheckboxes(row, e.target.checked);
+            this._updateSelectionBar();
+        });
+        // Note: this listener already handles the direct-click case;
+        // _setRowSelected (used by select-all) covers the programmatic case,
+        // since setting .checked directly doesn't fire 'change'.
         row.querySelector('.unsub-cb')?.addEventListener('change', () => this._updateSelectionBar());
         row.querySelector('[data-action="toggle-expand"]')?.addEventListener('click', () => this._toggleExpand(row, sender));
         row.querySelector('[data-action="label"]')?.addEventListener('click', () => this._openLabelPicker(row, sender));
@@ -266,74 +346,151 @@ class SenderListView {
 
         if (!detail.dataset.built) {
             detail.dataset.built = '1';
-            detail.appendChild(this._buildMessageRows(sender));
+            detail.appendChild(this._buildMessageRows(sender, row));
         }
     }
 
-    _buildMessageRows(sender) {
-        const wrap = document.createElement('div');
-        const subjects = sender.subjects || [];
+    // Message checkboxes must obey the parent sender-row checkbox, not just
+    // start checked regardless of it - a deselected sender shouldn't show
+    // its messages as "included" when expanded, and toggling the parent
+    // afterward must propagate to any already-built children too.
+    _syncMessageCheckboxes(row, checked) {
+        row.querySelectorAll('.message-cb').forEach(cb => { cb.checked = checked; });
+    }
 
+    _buildMessageRows(sender, row) {
+        const wrap = document.createElement('div');
         wrap.innerHTML = '<div class="divider"></div>';
+
         const rowsContainer = document.createElement('div');
         rowsContainer.className = 'message-rows';
+        wrap.appendChild(rowsContainer);
 
-        subjects.forEach(subject => {
-            const row = document.createElement('div');
-            row.className = 'message-row';
+        const loadMoreBtn = document.createElement('button');
+        loadMoreBtn.type = 'button';
+        loadMoreBtn.className = 'message-row-load-more';
+        rowsContainer.appendChild(loadMoreBtn);
+        loadMoreBtn.addEventListener('click', () => this._revealMoreMessages(rowsContainer, sender, loadMoreBtn, row));
 
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'message-cb';
-            checkbox.checked = true;
-            // Phase 4c ships the actual per-message inclusion mechanism
-            // (bulk actions accepting an explicit included-message-ID list
-            // per sender); until then, leaving this checkbox interactive
-            // implies unchecking it excludes that message from "Delete
-            // selected"/"Unsubscribe selected"/etc, which isn't true yet -
-            // disable it so the UI doesn't promise something it can't do.
-            checkbox.disabled = true;
-            checkbox.title = 'Per-message selection is coming in a future update - actions currently apply to this sender as a whole';
+        this._revealMoreMessages(rowsContainer, sender, loadMoreBtn, row);
 
-            const subjectSpan = document.createElement('span');
-            subjectSpan.className = 'message-subject';
-            // Subject lines are attacker-controlled (arbitrary email senders) -
-            // set as a DOM property, never string-templated into HTML/attrs,
-            // so stray quotes/HTML in a subject can't break out of markup.
-            subjectSpan.textContent = subject;
+        return wrap;
+    }
 
-            const eyeIcon = document.createElement('i');
-            eyeIcon.className = 'ti ti-eye disabled';
-            eyeIcon.dataset.action = 'preview';
-            eyeIcon.title = 'Full preview - coming in a future phase';
-            eyeIcon.addEventListener('click', () => {
-                GmailCleaner.UI.showInfoToast('Full email preview is coming in a future phase');
-            });
+    // Reveals the next MESSAGE_PAGE_SIZE message rows into rowsContainer,
+    // tracking how many are already shown via the container's own child
+    // count (minus the "Load more" button itself) - no separate counter to
+    // keep in sync. All data is already in `sender.subjects`/`message_ids`
+    // (the scan fetched every matched message, see module comment) so this
+    // never makes a network call. Newly-revealed rows are initialized to
+    // the parent sender-row's *current* checkbox state, read fresh each
+    // call - covers both the first reveal and a later "Load more" after
+    // the parent's been toggled since expand.
+    _revealMoreMessages(rowsContainer, sender, loadMoreBtn, row) {
+        const subjects = sender.subjects || [];
+        const messageIds = sender.message_ids || [];
+        const parentChecked = row.querySelector('.row-select-cb')?.checked ?? true;
+        const shown = rowsContainer.children.length - 1;
+        const next = Math.min(shown + MESSAGE_PAGE_SIZE, subjects.length);
+        for (let i = shown; i < next; i++) {
+            rowsContainer.insertBefore(
+                this._buildMessageRow(subjects[i], messageIds[i], parentChecked),
+                loadMoreBtn
+            );
+        }
+        const remaining = subjects.length - next;
+        if (remaining > 0) {
+            loadMoreBtn.textContent = `Load 20 more (${remaining} remaining)`;
+            loadMoreBtn.classList.remove('hidden');
+            return;
+        }
+        loadMoreBtn.classList.add('hidden');
 
-            const copyIcon = document.createElement('i');
-            copyIcon.className = 'ti ti-copy copy-icon';
-            copyIcon.dataset.action = 'copy';
-            copyIcon.title = 'Copy subject';
-            copyIcon.addEventListener('click', () => {
-                navigator.clipboard?.writeText(subject).then(() => {
-                    GmailCleaner.UI.showSuccessToast('Subject copied to clipboard');
-                }).catch(() => {});
-            });
+        // The preview can only ever show what the scan actually fetched
+        // (subjects.length === sender.count) - if the sender's real total
+        // is bigger, say so explicitly instead of the list just stopping
+        // with no explanation (Phase 4c round-2 finding: pairing an honest
+        // "X shown of Y total" with an unexplained preview cutoff at X was
+        // its own source of confusion).
+        const total = Math.max(sender.total_count ?? sender.count, sender.count);
+        if (total > subjects.length && !rowsContainer.querySelector('.message-row-preview-limit')) {
+            const note = document.createElement('div');
+            note.className = 'message-row-preview-limit';
+            note.textContent = `That's everything from this sender in your last scan. ${total} total match your filters — rescan with a higher limit to preview more.`;
+            rowsContainer.insertBefore(note, loadMoreBtn);
+        }
+    }
 
-            row.append(checkbox, subjectSpan, eyeIcon, copyIcon);
-            rowsContainer.appendChild(row);
+    _buildMessageRow(subject, messageId, checked = true) {
+        const row = document.createElement('div');
+        row.className = 'message-row';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'message-cb';
+        checkbox.checked = checked;
+        checkbox.dataset.messageId = messageId;
+        checkbox.title = 'Uncheck to exclude this message from the next bulk action on this sender';
+
+        const subjectSpan = document.createElement('span');
+        subjectSpan.className = 'message-subject';
+        // Subject lines are attacker-controlled (arbitrary email senders) -
+        // set as a DOM property, never string-templated into HTML/attrs,
+        // so stray quotes/HTML in a subject can't break out of markup.
+        subjectSpan.textContent = subject;
+
+        const eyeIcon = document.createElement('i');
+        eyeIcon.className = 'ti ti-eye';
+        eyeIcon.dataset.action = 'preview';
+        eyeIcon.title = 'Open in Gmail (requires being signed into this account in your browser)';
+        eyeIcon.addEventListener('click', () => this._openInGmail(messageId));
+
+        const copyIcon = document.createElement('i');
+        copyIcon.className = 'ti ti-copy copy-icon';
+        copyIcon.dataset.action = 'copy';
+        copyIcon.title = 'Copy subject';
+        copyIcon.addEventListener('click', () => {
+            navigator.clipboard?.writeText(subject).then(() => {
+                GmailCleaner.UI.showSuccessToast('Subject copied to clipboard');
+            }).catch(() => {});
         });
 
-        const moreCount = sender.count - subjects.length;
-        if (moreCount > 0) {
-            const more = document.createElement('div');
-            more.className = 'message-row-more';
-            more.textContent = `+${moreCount} more not shown`;
-            rowsContainer.appendChild(more);
-        }
+        row.append(checkbox, subjectSpan, eyeIcon, copyIcon);
+        return row;
+    }
 
-        wrap.appendChild(rowsContainer);
-        return wrap;
+    // Opens the real Gmail web UI on this exact message, in a new tab - no
+    // Gmail API call, no email-body rendering in this app (see module
+    // comment). Requires the user already be signed into that account in
+    // their browser, same as clicking a Gmail link anywhere else.
+    _openInGmail(messageId) {
+        if (!messageId) return;
+        const email = GmailCleaner.Auth?.currentEmail || '';
+        if (!hasShownGmailSignInHint) {
+            hasShownGmailSignInHint = true;
+            GmailCleaner.UI.showInfoToast(
+                email ? `Opening in Gmail — sign in as ${email} there if prompted.` : 'Opening in Gmail — sign in there if prompted.'
+            );
+        }
+        const url = `https://mail.google.com/mail/?authuser=${encodeURIComponent(email)}#all/${encodeURIComponent(messageId)}`;
+        window.open(url, '_blank', 'noopener');
+    }
+
+    // Flat list of message IDs whose per-message checkbox was unchecked,
+    // across every currently-expanded sender row. Bulk actions treat this
+    // as "exclude from an otherwise sender-wide action," not an include-list
+    // (see delete.py's delete_emails_bulk_background for why) - an ID here
+    // that doesn't belong to the sender(s) a given action targets is simply
+    // a no-op for that action.
+    getExcludedMessageIds() {
+        return this._excludedMessageIdsWithin(this.id('Rows'));
+    }
+
+    _excludedMessageIdsWithin(container) {
+        return [...container.querySelectorAll('.message-cb')]
+            .filter(cb => !cb.checked)
+            .map(cb => cb.dataset.messageId)
+            .filter(Boolean);
     }
 
     async _toggleImportant(row, sender, iconEl) {
@@ -397,7 +554,8 @@ class SenderListView {
                     body: JSON.stringify({
                         label_id: labelId,
                         senders: [sender.email],
-                        filters: this.filters
+                        filters: this.filters,
+                        excluded_message_ids: this._excludedMessageIdsWithin(detail)
                     })
                 });
                 GmailCleaner.UI.showSuccessToast(`Label applied to ${sender.email}`);
@@ -424,11 +582,25 @@ class SenderListView {
             }));
     }
 
+    // Sums real totals (total_count), not the scanned sample (count) - a
+    // bulk action affects every message matching sender+filters, not just
+    // whatever fell within the scan's own window, so the selection summary
+    // and confirm dialogs must reflect that real number, not understate it.
+    // Also subtracts each selected sender's own excluded (unchecked)
+    // message count - a sender with 38 total and 1 explicitly excluded
+    // message actually only has 37 affected, and the summary/confirm text
+    // must match what the backend will really do, not just the sender's
+    // raw total.
     getSelectedCount() {
-        const emails = this.getSelectedSenderEmails();
-        return this.results
-            .filter(r => emails.includes(r.email))
-            .reduce((sum, r) => sum + r.count, 0);
+        return [...this.id('Rows').querySelectorAll('.sender-row')]
+            .filter(row => row.querySelector('.row-select-cb')?.checked)
+            .reduce((sum, row) => {
+                const sender = this.results.find(r => r.email === row.dataset.email);
+                if (!sender) return sum;
+                const total = Math.max(sender.total_count ?? sender.count, sender.count);
+                const excluded = this._excludedMessageIdsWithin(row).length;
+                return sum + Math.max(total - excluded, 0);
+            }, 0);
     }
 
     removeSendersFromResults(emails) {
@@ -453,6 +625,7 @@ class SenderListView {
         const unsubToggled = this.showUnsubscribe ? this.getUnsubToggledSenders() : [];
         const hasSelection = emails.length > 0 || unsubToggled.length > 0;
         this.id('ActionsBar')?.classList.toggle('hidden', !hasSelection);
+        this._syncSelectAllCheckbox();
         this.onSelectionChange(emails, this.getSelectedCount(), unsubToggled);
     }
 

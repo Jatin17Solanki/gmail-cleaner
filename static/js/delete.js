@@ -112,14 +112,19 @@ GmailCleaner.Delete = (() => {
             GmailCleaner.UI.showErrorToast('No senders selected');
             return;
         }
-        if (!confirm(`Delete emails from ${emails.length} sender${emails.length === 1 ? '' : 's'}? They'll be moved to Trash and kept for 30 days.`)) {
+        // getSelectedCount() sums each sender's real total (not just what
+        // the scan happened to sample) - this is every message matching
+        // sender + active filters, since that's what the action itself
+        // actually affects, so the confirm step must not understate it.
+        const count = view.getSelectedCount();
+        if (!confirm(`Delete ${count} email${count === 1 ? '' : 's'} from ${emails.length} sender${emails.length === 1 ? '' : 's'}? This includes all of their mail matching your active filters, not just what's shown here. They'll be moved to Trash and kept for 30 days.`)) {
             return;
         }
         try {
             await fetch('/api/delete-emails-bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senders: emails })
+                body: JSON.stringify({ senders: emails, excluded_message_ids: view.getExcludedMessageIds() })
             });
             await pollDeleteBulk();
             view.removeSendersFromResults(emails);

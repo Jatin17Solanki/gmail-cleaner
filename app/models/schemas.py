@@ -145,6 +145,11 @@ class MarkReadBulkRequest(BaseModel):
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
     )
+    excluded_message_ids: list[str] = Field(
+        default=[],
+        description="Message IDs to leave untouched, from unchecked per-message "
+        "checkboxes in an expanded sender row (Phase 4c)",
+    )
 
 
 class UnsubscribeRequest(BaseModel):
@@ -164,6 +169,11 @@ class DeleteBulkRequest(BaseModel):
     """Request to delete emails from multiple senders."""
 
     senders: list[str] = Field(default=[], description="List of sender addresses")
+    excluded_message_ids: list[str] = Field(
+        default=[],
+        description="Message IDs to leave untouched, from unchecked per-message "
+        "checkboxes in an expanded sender row (Phase 4c)",
+    )
 
 
 class DownloadEmailsRequest(BaseModel):
@@ -186,6 +196,11 @@ class ApplyLabelRequest(BaseModel):
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
     )
+    excluded_message_ids: list[str] = Field(
+        default=[],
+        description="Message IDs to leave untouched, from unchecked per-message "
+        "checkboxes in an expanded sender row (Phase 4c)",
+    )
 
 
 class RemoveLabelRequest(BaseModel):
@@ -196,6 +211,11 @@ class RemoveLabelRequest(BaseModel):
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
     )
+    excluded_message_ids: list[str] = Field(
+        default=[],
+        description="Message IDs to leave untouched, from unchecked per-message "
+        "checkboxes in an expanded sender row (Phase 4c)",
+    )
 
 
 class ArchiveRequest(BaseModel):
@@ -204,6 +224,11 @@ class ArchiveRequest(BaseModel):
     senders: list[str] = Field(default=[], description="List of sender addresses")
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
+    )
+    excluded_message_ids: list[str] = Field(
+        default=[],
+        description="Message IDs to leave untouched, from unchecked per-message "
+        "checkboxes in an expanded sender row (Phase 4c)",
     )
 
 

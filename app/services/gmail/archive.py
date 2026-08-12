@@ -16,8 +16,9 @@ from app.services.gmail.helpers import build_gmail_query, get_sender_info, get_s
 # Phase 3: Archive gets its own tab/scan (previously it only operated on
 # whatever the Delete tab had already scanned) — mirrors delete.py's
 # scan_senders_for_delete, minus the unsubscribe fields Archive has no use
-# for. Same ~20 subject/message-preview cap as Delete (Phase 4c).
-SUBJECTS_PER_SENDER_CAP = 20
+# for. Subjects are stored 1:1 with message_ids, uncapped (see delete.py's
+# equivalent comment) — Phase 4c's expanded-row pagination is a client-side
+# reveal over this already-fetched data.
 
 
 def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
@@ -128,11 +129,7 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
                 sender_counts[sender_email]["email"] = sender_email
                 sender_counts[sender_email]["message_ids"].append(msg_id)
                 sender_counts[sender_email]["total_size"] += size_estimate
-                if (
-                    len(sender_counts[sender_email]["subjects"])
-                    < SUBJECTS_PER_SENDER_CAP
-                ):
-                    sender_counts[sender_email]["subjects"].append(subject)
+                sender_counts[sender_email]["subjects"].append(subject)
 
                 if email_date:
                     if sender_counts[sender_email]["first_date"] is None:
@@ -168,6 +165,15 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
             reverse=True,
         )
 
+        state.archive_scan_status["message"] = "Fetching total counts..."
+        quota.fetch_true_sender_totals(
+            service,
+            sorted_senders,
+            filters,
+            state.archive_scan_status,
+            label="messages.list (archive total count)",
+        )
+
         state.archive_scan_results = sorted_senders
         state.archive_scan_status["message"] = f"Found {len(sorted_senders)} senders"
         state.archive_scan_status["done"] = True
@@ -187,7 +193,11 @@ def get_archive_scan_results() -> list:
     return state.archive_scan_results.copy()
 
 
-def archive_emails_background(senders: list[str], filters: Optional[dict] = None):
+def archive_emails_background(
+    senders: list[str],
+    filters: Optional[dict] = None,
+    excluded_message_ids: Optional[list[str]] = None,
+):
     """Archive emails from selected senders (remove INBOX label).
 
     Args:
@@ -196,6 +206,10 @@ def archive_emails_background(senders: list[str], filters: Optional[dict] = None
             senders (see build_gmail_query) — archiving stays scoped to the
             filtered subset the user reviewed, same #107 pattern used by
             delete/label operations.
+        excluded_message_ids: Message IDs to leave untouched even though
+            they match the sender+filters query — see delete.py's
+            delete_emails_bulk_background for the query-minus-excluded
+            reasoning (Phase 4c).
     """
     state.reset_archive()
 
@@ -217,6 +231,7 @@ def archive_emails_background(senders: list[str], filters: Optional[dict] = None
             return
 
         total_archived = 0
+        excluded = set(excluded_message_ids) if excluded_message_ids else None
 
         for i, sender in enumerate(senders):
             state.archive_status["current_sender"] = i + 1
@@ -246,6 +261,9 @@ def archive_emails_background(senders: list[str], filters: Optional[dict] = None
                 page_token = result.get("nextPageToken")
                 if not page_token:
                     break
+
+            if excluded:
+                message_ids = [m for m in message_ids if m not in excluded]
 
             if not message_ids:
                 continue

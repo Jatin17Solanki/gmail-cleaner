@@ -253,6 +253,157 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `nav-item-disabled` class and a "Coming in a future phase" tooltip,
     which silently blocked every click - left over from before this phase
     built the real view.
+- Phase 4c: per-email preview, completing the expanded-sender-row
+  mechanism Phase 3 shipped as a shell. Two design decisions were made
+  with the human before implementing (documented here since they diverge
+  from the PRD's literal text, not just fill in an ambiguity):
+  - **The eye icon deep-links to the real Gmail web UI in a new tab**
+    (`https://mail.google.com/mail/?authuser=<email>#all/<message_id>`,
+    `window.open(..., 'noopener')`) instead of fetching/rendering the
+    message body in-app. Cheaper (zero Gmail API cost vs. 20 units/click),
+    and safer - no attacker-controlled email HTML ever touches this app's
+    origin, since Gmail's own site renders it. Requires the user already
+    be signed into that account in their browser.
+  - **Per-message checkboxes exclude, not include.** `delete_emails_bulk_background`,
+    `archive_emails_background`, `mark_emails_as_read_bulk_background`, and
+    `apply_label_to_senders_background`/`remove_label_from_senders_background`
+    all gained an `excluded_message_ids` param: the action still queries
+    Gmail fresh for everything matching the sender + active filters (as
+    before), then subtracts whatever was explicitly unchecked. An
+    include-list read of the PRD's literal wording would have silently
+    skipped any mail beyond whatever happened to be previewed, since a
+    sender can have more messages than fit on screen - that's exactly what
+    this design avoids.
+  - **Discovered while implementing, changed the pagination approach**:
+    `messages.get()` already runs for every message a scan matches (up to
+    the scan's own `limit`) to compute `count`/`total_size` - the old
+    20-subject-per-sender cap (`SUBJECTS_PER_SENDER_CAP` in
+    `delete.py`/`archive.py`/`mark_read.py`) was only discarding data
+    already fetched, not avoiding a fetch. Removed the cap entirely
+    (`subjects` now mirrors `message_ids` 1:1 for every scanned message),
+    so "Load more" pagination in the expanded row is a pure client-side
+    reveal over already-downloaded data - no new endpoint, no extra Gmail
+    API call, no extra quota cost. `senderList.js` reveals 20 rows at a
+    time via a "Load more" button.
+  - New `app/models/schemas.py` field `excluded_message_ids` on
+    `DeleteBulkRequest`, `ArchiveRequest`, `MarkReadBulkRequest`,
+    `ApplyLabelRequest`, `RemoveLabelRequest` (default `[]`); threaded
+    through `app/api/actions.py` to the corresponding background function.
+  - Mark-important is not covered - it's a single-click, whole-sender
+    toggle independent of the expand/checkbox state (no confirm step, no
+    selection dependency), so per-message exclusion doesn't fit its
+    existing interaction model.
+  - Folded in backlog item 9 ("no select-all affordance") while already
+    touching `senderList.js` for the same file, per the backlog's own note
+    that this was the natural time to pick it up. Each sender-row list
+    (Delete/Mark-as-read/Archive) gained a "Select all" checkbox above the
+    rows, with indeterminate state when some but not all rows are
+    selected.
+  - Tests: 434/434 passing (up from 411) - exclusion-semantics coverage in
+    `test_delete.py`/`test_archive.py`/`test_mark_read.py`/`test_labels.py`,
+    uncapped-subjects coverage replacing the old capped-at-20 assertion in
+    `test_delete.py`, new request-model and endpoint pass-through tests in
+    `test_schemas.py`/`test_api_actions.py`. No JS test harness exists
+    (backlog item 3, still open) - `senderList.js` and the three view
+    files were syntax-checked with `node --check` and are pending the
+    human's manual browser-driven verification pass, same precedent as
+    every prior frontend-touching phase.
+  - **Round 2, from the human's own review of this PR before merge** (fixed
+    in the same branch, same precedent as every prior phase's mid-review
+    bugfix rounds): reviewing the delete/archive/mark-read/label action
+    functions surfaced that they were never actually bounded by a scan's
+    `limit` in the first place - they independently re-query Gmail by
+    sender + filters and paginate to exhaustion (this predates Phase 4c
+    entirely, going back to the #107 fix in Phase 1). That means the
+    per-sender `count` shown in a scanned row was always just a sample of
+    the scan's own window, not the true number an action would affect -
+    and Phase 4c's new "select all" made that gap far more consequential,
+    since it multiplies the same understatement across every sender shown
+    at once. Fixed as part of this same PR, not deferred:
+    - New `quota.fetch_true_sender_totals()`: one extra `messages.list()`
+      call per unique sender after a scan groups results (5 units flat,
+      `resultSizeEstimate` only - no per-message `get()` needed), wired
+      into all three scan functions. A per-sender failure falls back to
+      that sender's sampled count rather than aborting the scan. New
+      `total_count` field on each sender in scan results.
+    - Sender rows now show "X shown of Y total emails" whenever the true
+      total exceeds the sampled count, instead of just the sample.
+      `getSelectedCount()` (which drives both the selection-bar summary and
+      Delete's confirm dialog) now sums real totals, not sampled counts -
+      "12 emails selected" no longer silently means "up to several hundred
+      once you click Delete." Delete's confirm dialog text now states
+      explicitly that the action covers all of a sender's mail matching
+      the active filters, not just what's shown.
+    - New always-visible explainer note ("Acting on a sender affects all of
+      their mail matching your active filters — not just the count shown
+      below"), directly under the scan controls on Delete/Archive/
+      Mark-as-read - deliberately plain text, not another icon+tooltip
+      (mirrors the Restore screen's existing "Showing actions from the last
+      30 days" pattern), since a hover-only affordance is exactly the kind
+      of thing this needed to not be missable.
+    - Separately found while implementing the above: per-message checkboxes
+      in an expanded sender row always rendered checked regardless of the
+      parent sender-row checkbox's actual state, and toggling the parent
+      afterward never propagated to already-built children - fixed so
+      children inherit the parent's current state when built/revealed and
+      follow it when the parent is toggled (including through "select
+      all", which sets checkboxes programmatically and so needed its own
+      explicit propagation call rather than relying on a `change` event).
+    - Eye-icon tooltip now states the sign-in requirement explicitly, plus
+      a one-time-per-page-load info toast on first use reminding which
+      account to be signed into - lighter-weight than the above since a
+      not-signed-in click lands on Gmail's own account picker rather than
+      failing silently.
+    - New tests: `TestFetchTrueSenderTotals` in `test_quota.py`, and a
+      `total_count`-in-results integration test per scan function in
+      `test_delete.py`/`test_archive.py`/`test_mark_read.py` (the latter
+      also confirming the true-count query stays scoped to `is:unread`,
+      matching the scan itself). 442/442 tests passing (up from 434).
+  - **Round 3, from the human's continued review**: three more findings,
+    fixed in the same branch.
+    - **Correctness bug in round 2's own fix**: `fetch_true_sender_totals`
+      used Gmail's `resultSizeEstimate` field, which Google documents as
+      an *estimate*, not an exact count - a real repro during review found
+      it inflating badly enough that 37 senders summed to a "total" of
+      7,437 emails, exceeding the account's actual inbox size. Replaced
+      with an exact count via `messages.list()` paginated to exhaustion
+      (the same pattern the actual bulk-action functions already use) -
+      same 5-units-flat-per-call cost for any sender under 500 matching
+      messages (the common case), exact instead of approximate. All
+      `fetch_true_sender_totals` tests and the three scan-integration
+      tests rewritten around this (`test_counts_exactly_not_via_result_size_estimate`
+      is a direct regression test for the 7,437 repro).
+    - The always-visible explainer note's wording leaned on "your active
+      filters," which reads as inapplicable when a user has set none -
+      reworded to name the actual culprit directly: "the scan size above
+      only limits what's previewed, not what gets acted on."
+    - The new honest "X shown of Y total" row display (round 2) created an
+      unexplained gap of its own: "Load more" can only ever reveal what
+      the scan actually fetched (bounded by `count`), never the larger
+      `total_count`, since fetching further would mean new Gmail API calls
+      beyond what today's free client-side pagination does. Fixed with an
+      explanatory note once "Load more" is exhausted below the true total,
+      rather than the list just silently stopping. The larger fix (letting
+      "Load more" fetch beyond the scan window on demand) was explicitly
+      scoped out as a bigger, costed feature and logged as backlog item 12
+      in `PROGRESS.md` instead of built now.
+    - 444/444 tests passing (up from 442).
+  - **Round 4, from the human's own manual verification pass**: a sender
+    with "17 shown of 38 total" and one message explicitly unchecked
+    showed "Delete 38 emails from 1 sender?" in the confirm dialog -
+    ignoring the exclusion entirely - even though the actual delete
+    correctly affected only 37 (confirmed via Restore showing 37 deleted).
+    The backend was already correct; this was purely a frontend display
+    bug. Root cause: `getSelectedCount()` (which drives both the
+    selection-bar summary and Delete's confirm dialog) summed each
+    selected sender's real total but never subtracted that sender's own
+    excluded message count. Fixed to iterate selected sender rows
+    directly and subtract each one's own excluded-checkbox count from its
+    total before summing - so "1 sender, 38 total, 1 excluded" now
+    correctly shows 37. No backend changes needed (the actual delete
+    already respected exclusions correctly). No new automated test (no JS
+    harness - backlog item 3); verified via `node --check` and the fix's
+    logic mirrors the same subtraction the backend already performs.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

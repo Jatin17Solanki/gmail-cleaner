@@ -132,3 +132,36 @@ class TestLabelOperationsWriteOperationLog:
         apply_label_to_senders_background("Label_1", ["a@example.com"])
 
         assert operation_log.list_entries() == []
+
+
+class TestLabelOperationsExclusion:
+    """Phase 4c: per-message checkboxes exclude specific messages from an
+    otherwise sender-wide label add/remove - query minus excluded, not an
+    include-list (see delete.py's delete_emails_bulk_background for why)."""
+
+    @patch("app.services.gmail.labels.get_gmail_service")
+    def test_apply_label_skips_excluded_message(self, mock_get_service):
+        service = _mock_service(
+            {"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}]}
+        )
+        mock_get_service.return_value = (service, None)
+
+        apply_label_to_senders_background(
+            "Label_1", ["a@example.com"], excluded_message_ids=["m2"]
+        )
+
+        batch_modify = service.users.return_value.messages.return_value.batchModify
+        body = batch_modify.call_args.kwargs["body"]
+        assert set(body["ids"]) == {"m1", "m3"}
+
+    @patch("app.services.gmail.labels.get_gmail_service")
+    def test_excluding_every_matched_message_labels_nothing(self, mock_get_service):
+        service = _mock_service({"messages": [{"id": "m1"}]})
+        mock_get_service.return_value = (service, None)
+
+        apply_label_to_senders_background(
+            "Label_1", ["a@example.com"], excluded_message_ids=["m1"]
+        )
+
+        service.users.return_value.messages.return_value.batchModify.assert_not_called()
+        assert operation_log.list_entries() == []

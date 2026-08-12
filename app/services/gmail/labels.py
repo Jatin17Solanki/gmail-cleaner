@@ -131,6 +131,7 @@ def _apply_label_operation_background(
     success_message_template: str,
     error_message_template: str,
     filters: Optional[dict] = None,
+    excluded_message_ids: Optional[list[str]] = None,
 ) -> None:
     """Common helper for applying or removing labels from senders (background task).
 
@@ -147,6 +148,10 @@ def _apply_label_operation_background(
         filters: Filters that were active in the scan that surfaced these
             senders (see build_gmail_query) — keeps label operations scoped
             to the filtered subset the user reviewed, same root issue as #107.
+        excluded_message_ids: Message IDs to leave untouched even though
+            they match the sender+filters query — see delete.py's
+            delete_emails_bulk_background for the query-minus-excluded
+            reasoning (Phase 4c).
     """
     state.reset_label_operation()
 
@@ -249,6 +254,10 @@ def _apply_label_operation_background(
         except Exception as e:
             errors.append(f"{sender}: {str(e)}")
 
+    if excluded_message_ids:
+        excluded = set(excluded_message_ids)
+        all_message_ids = [m for m in all_message_ids if m not in excluded]
+
     if not all_message_ids:
         state.label_operation_status["progress"] = 100
         state.label_operation_status["done"] = True
@@ -319,7 +328,10 @@ def _apply_label_operation_background(
 
 
 def apply_label_to_senders_background(
-    label_id: str, senders: list[str], filters: Optional[dict] = None
+    label_id: str,
+    senders: list[str],
+    filters: Optional[dict] = None,
+    excluded_message_ids: Optional[list[str]] = None,
 ) -> None:
     """Apply a label to all emails from specified senders (background task)."""
     _apply_label_operation_background(
@@ -333,11 +345,15 @@ def apply_label_to_senders_background(
         success_message_template="Successfully labeled {count} emails",
         error_message_template="Labeled {count} emails with some errors",
         filters=filters,
+        excluded_message_ids=excluded_message_ids,
     )
 
 
 def remove_label_from_senders_background(
-    label_id: str, senders: list[str], filters: Optional[dict] = None
+    label_id: str,
+    senders: list[str],
+    filters: Optional[dict] = None,
+    excluded_message_ids: Optional[list[str]] = None,
 ) -> None:
     """Remove a label from all emails from specified senders (background task)."""
     _apply_label_operation_background(
@@ -351,6 +367,7 @@ def remove_label_from_senders_background(
         success_message_template="Successfully removed label from {count} emails",
         error_message_template="Unlabeled {count} emails with some errors",
         filters=filters,
+        excluded_message_ids=excluded_message_ids,
     )
 
 

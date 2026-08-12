@@ -121,12 +121,16 @@
       <i class="ti ti-info-circle scan-info-icon" title="{{ quota_tooltip }}" aria-label="Why scans can take a few minutes"></i>
     </div>
   </div>
+  <div class="scope-note">Acting on a sender affects all of their matching mail — the scan size above only limits what's previewed, not what gets acted on.</div>
   <div class="list-area" id="{{ prefix }}ListArea">
     <div class="empty-state" id="{{ prefix }}EmptyState">
       <i class="ti ti-inbox"></i>
       <h2>{{ empty_title }}</h2>
       <p>{{ empty_body }}</p>
     </div>
+    <label class="select-all-bar hidden" id="{{ prefix }}SelectAllBar">
+      <input type="checkbox" id="{{ prefix }}SelectAllCb">Select all
+    </label>
     <div id="{{ prefix }}Rows"></div>
   </div>
   <div class="actions-bar hidden" id="{{ prefix }}ActionsBar">
