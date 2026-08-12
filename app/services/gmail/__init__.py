@@ -14,6 +14,8 @@ This module is split into multiple files for better organization:
 - archive.py: Archive scan + archive operations
 - important.py: Mark important operations
 - restore.py: Restore operations (reverses an operation-log entry)
+- routines.py: Preview/run a saved Routine (app/services/routines.py holds
+  its CRUD storage)
 """
 
 # Import all functions for backward compatibility
@@ -71,6 +73,11 @@ from app.services.gmail.important import (
 from app.services.gmail.restore import (
     restore_operation,
 )
+from app.services.gmail.routines import (
+    preview_routine,
+    run_routine_background,
+    get_routine_run_status,
+)
 
 # Export private helper functions with underscore-prefixed aliases for backward compatibility.
 # These are used by tests that import the original function names from this module.
@@ -121,6 +128,10 @@ __all__ = [
     "get_mark_read_status",
     # Restore
     "restore_operation",
+    # Routines
+    "preview_routine",
+    "run_routine_background",
+    "get_routine_run_status",
     # Private helpers (for testing)
     "_get_sender_info",
     "_get_subject",

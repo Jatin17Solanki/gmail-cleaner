@@ -22,6 +22,7 @@ from app.api import (
     auth_gate_router,
     restore_router,
     accounts_router,
+    routines_router,
 )
 
 templates = Jinja2Templates(directory="templates")
@@ -160,6 +161,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_gate_router)
     app.include_router(restore_router)
     app.include_router(accounts_router)
+    app.include_router(routines_router)
 
     # HTML routes
     @app.get("/", include_in_schema=False)

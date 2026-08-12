@@ -58,6 +58,7 @@ def reset_app_state():
         app_state.reset_important()
         app_state.reset_archive_scan()
         app_state.reset_markread_scan()
+        app_state.reset_routine_run()
         app_state.current_user = {"email": None, "logged_in": False}
 
     _reset()
@@ -96,6 +97,9 @@ def isolate_operation_log(monkeypatch, tmp_path):
     from app.services import operation_log
 
     monkeypatch.setattr(operation_log.settings, "token_file", str(tmp_path / "token.json"))
+    # Note: `routines.py` (Phase 4b) derives its file path from this same
+    # `settings` singleton, so it's isolated by this same monkeypatch - no
+    # separate fixture needed (see app/services/routines.py).
 
 
 @pytest.fixture(autouse=True)

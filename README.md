@@ -105,6 +105,8 @@ Sign in to multiple Gmail accounts at once and switch between them without repea
 
 ### Routines
 
+**Status: Done**
+
 Save a named preset — a list of senders, a relative age threshold, and one or more actions (delete / label / mark as read / archive) — and re-run it with one click instead of re-entering filters every time. Built for recurring cleanup (e.g. daily newsletters). Always shows a preview of what it'll affect before running, and every run is undoable via Restore-from-Trash.
 
 ### Per-email preview

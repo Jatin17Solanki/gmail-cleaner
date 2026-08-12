@@ -5,7 +5,7 @@ Data validation and serialization.
 """
 
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import re
 
 
@@ -217,6 +217,92 @@ class MarkImportantRequest(BaseModel):
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
     )
+
+
+# ----- Routines (Phase 4b) -----
+
+# "not delete-only" per PRD Section 6, Phase 4b — a Routine can combine any
+# subset of these into one action.
+ROUTINE_ACTIONS = {"delete", "archive", "mark_read", "label"}
+
+
+class CreateRoutineRequest(BaseModel):
+    """Request to create a saved Routine (scoped to the active account)."""
+
+    name: str = Field(..., min_length=1, max_length=100, description="Routine name")
+    senders: list[str] = Field(
+        ..., min_length=1, description="Sender email addresses or domains"
+    )
+    older_than: str = Field(
+        ..., description='Relative age threshold, e.g. "7d", "30d"'
+    )
+    actions: list[str] = Field(
+        ..., min_length=1, description="One or more of: delete, archive, mark_read, label"
+    )
+    label_id: Optional[str] = Field(
+        default=None, description="Gmail label ID — required when actions includes 'label'"
+    )
+
+    @field_validator("senders")
+    @classmethod
+    def validate_senders(cls, v: list[str]) -> list[str]:
+        cleaned = [s.strip() for s in v if s and s.strip()]
+        if not cleaned:
+            raise ValueError("At least one sender is required")
+        return cleaned
+
+    @field_validator("older_than")
+    @classmethod
+    def validate_older_than(cls, v: str) -> str:
+        if not re.match(r"^\d+d$", v):
+            raise ValueError('older_than must be in format like "7d", "30d", "365d"')
+        return v
+
+    @field_validator("actions")
+    @classmethod
+    def validate_actions(cls, v: list[str]) -> list[str]:
+        invalid = set(v) - ROUTINE_ACTIONS
+        if invalid:
+            raise ValueError(f"Invalid action(s): {sorted(invalid)}. Must be one of: {sorted(ROUTINE_ACTIONS)}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_label_id_present_when_labeling(self) -> "CreateRoutineRequest":
+        if "label" in self.actions and not (self.label_id and self.label_id.strip()):
+            raise ValueError("label_id is required when actions includes 'label'")
+        return self
+
+
+class RoutinePreviewSenderCount(BaseModel):
+    """Per-sender match count shown in the Routine confirm step."""
+
+    sender: str
+    count: int
+
+
+class RoutinePreviewResponse(BaseModel):
+    """Preview of what a Routine run will match, shown before executing."""
+
+    routine_id: str
+    name: str
+    total: int
+    per_sender: list[RoutinePreviewSenderCount]
+    actions: list[str]
+
+
+class RoutineInfo(BaseModel):
+    """A saved Routine (Phase 4b), scoped to a single account."""
+
+    id: str
+    name: str
+    senders: list[str]
+    older_than: str
+    actions: list[str]
+    label_id: Optional[str] = None
+    label_name: Optional[str] = None
+    schedule: Optional[str] = None
+    created_at: str
+    last_run_at: Optional[str] = None
 
 
 # ----- Response Models -----

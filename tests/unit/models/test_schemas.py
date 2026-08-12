@@ -16,6 +16,7 @@ from app.models.schemas import (
     MarkReadScanRequest,
     MarkReadBulkRequest,
     ArchiveRequest,
+    CreateRoutineRequest,
 )
 
 
@@ -275,3 +276,75 @@ class TestArchiveRequestFilters:
         filters = FiltersModel(older_than="180d")
         request = ArchiveRequest(senders=["a@example.com"], filters=filters)
         assert request.filters.older_than == "180d"
+
+
+class TestCreateRoutineRequest:
+    """Tests for CreateRoutineRequest validation (Phase 4b)."""
+
+    def _base_kwargs(self, **overrides):
+        kwargs = {
+            "name": "Market newsletters",
+            "senders": ["a@example.com"],
+            "older_than": "7d",
+            "actions": ["delete"],
+        }
+        kwargs.update(overrides)
+        return kwargs
+
+    def test_valid_request(self):
+        request = CreateRoutineRequest(**self._base_kwargs())
+        assert request.name == "Market newsletters"
+        assert request.senders == ["a@example.com"]
+        assert request.actions == ["delete"]
+        assert request.label_id is None
+
+    def test_multiple_actions_allowed(self):
+        request = CreateRoutineRequest(**self._base_kwargs(actions=["delete", "archive"]))
+        assert request.actions == ["delete", "archive"]
+
+    def test_empty_name_rejected(self):
+        with pytest.raises(ValidationError):
+            CreateRoutineRequest(**self._base_kwargs(name=""))
+
+    def test_empty_senders_rejected(self):
+        with pytest.raises(ValidationError):
+            CreateRoutineRequest(**self._base_kwargs(senders=[]))
+
+    def test_blank_senders_are_stripped_out(self):
+        with pytest.raises(ValidationError):
+            CreateRoutineRequest(**self._base_kwargs(senders=["  ", ""]))
+
+    def test_senders_are_trimmed(self):
+        request = CreateRoutineRequest(**self._base_kwargs(senders=[" a@example.com "]))
+        assert request.senders == ["a@example.com"]
+
+    @pytest.mark.parametrize("value", ["1week", "30", "7", "abc"])
+    def test_invalid_older_than_rejected(self, value):
+        with pytest.raises(ValidationError):
+            CreateRoutineRequest(**self._base_kwargs(older_than=value))
+
+    def test_empty_actions_rejected(self):
+        with pytest.raises(ValidationError):
+            CreateRoutineRequest(**self._base_kwargs(actions=[]))
+
+    def test_invalid_action_rejected(self):
+        with pytest.raises(ValidationError):
+            CreateRoutineRequest(**self._base_kwargs(actions=["unsubscribe"]))
+
+    def test_label_action_requires_label_id(self):
+        with pytest.raises(ValidationError, match="label_id is required"):
+            CreateRoutineRequest(**self._base_kwargs(actions=["label"]))
+
+    def test_label_action_with_blank_label_id_rejected(self):
+        with pytest.raises(ValidationError, match="label_id is required"):
+            CreateRoutineRequest(**self._base_kwargs(actions=["label"], label_id="  "))
+
+    def test_label_action_with_label_id_accepted(self):
+        request = CreateRoutineRequest(
+            **self._base_kwargs(actions=["label"], label_id="Label_1")
+        )
+        assert request.label_id == "Label_1"
+
+    def test_non_label_actions_do_not_require_label_id(self):
+        request = CreateRoutineRequest(**self._base_kwargs(actions=["delete", "archive"]))
+        assert request.label_id is None
