@@ -839,6 +839,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit direction rather than guess-fixed, since a wrong fix here
   risks masking a real correctness issue rather than a cosmetic one
 
+## [0.1.0] - 2026-08-12
+
+### Added
+First published Docker image for this fork.
+
+Image: `ghcr.io/jatin17solanki/gmail-cleaner:v0.1.0` (and `:latest`)
+
+This release covers everything shipped through Phase 4c plus the housekeeping batch: multi-account switching, quota-aware scanning, Routines, per-email preview, Restore-from-Trash, and the app-level login gate — see CHANGELOG.md for full detail.
+
+To use the published image instead of building locally, see `docker-compose.yml`'s commented Option 2.
+
+
 ## [1.0.0] - 2024-11-29
 
 ### Added
@@ -856,5 +868,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mark emails as important/unimportant
 - Download emails as CSV export
 
-[Unreleased]: https://github.com/Gururagavendra/gmail-cleaner/compare/v1.0.0...HEAD
+[0.1.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Gururagavendra/gmail-cleaner/compare/v0.1.0...HEAD
 [1.0.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v1.0.0
