@@ -526,6 +526,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deliberately quiet styling (muted color, small text) rather than a
   prominent CTA, sitting at the bottom of the sidebar via a new `flex: 1`
   on `.nav-menu`.
+- Docker image publishing pipeline verified working end-to-end.
+  `.github/workflows/build-and-push.yml` (inherited from upstream, never
+  previously exercised - no repo secret existed and no release had ever
+  been cut) now also supports a manual `workflow_dispatch` trigger, used
+  to verify the pipeline with a throwaway build before committing to a
+  real versioned release. Confirmed via a real run: multi-platform
+  (`linux/amd64`+`linux/arm64`) build and push to
+  `ghcr.io/jatin17solanki/gmail-cleaner` succeeded, and the resulting
+  image is genuinely publicly pullable (checked anonymously, no
+  credentials) after flipping the GHCR package's visibility from its
+  private-by-default setting to public - a separate toggle GitHub does
+  not inherit from the source repo's own public visibility. Documented
+  the `GHCR_GMAIL_CLEANER_PAT` secret's 90-day rotation runbook in
+  `CONTRIBUTING.md`'s new "Maintainer Notes" section, since GitHub gives
+  no automated warning when a repo secret's underlying PAT expires - the
+  first sign would otherwise be a silently failing publish workflow.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

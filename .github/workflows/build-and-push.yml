@@ -11,6 +11,10 @@
 # You just created a PAT
 # visit your repo, Settings -> Secrets & Variables -> Actions -> Repo Secrets -> New
 # Name: GHCR_GMAIL_CLEANER_PAT; Secret: <paste from clipboard>
+#
+# This PAT expires (classic PATs support up to a fixed expiry). When it
+# does, this workflow's "Log in to Github Packages" step starts failing.
+# See CONTRIBUTING.md's "Maintainer Notes" section for the rotation steps.
 
 name: Build and Publish Docker images
 
@@ -23,6 +27,10 @@ name: Build and Publish Docker images
 on:
   release:
     types: [created]
+  # Manual trigger for verifying the build/push pipeline works before
+  # committing to a real versioned release. Run via: gh workflow run
+  # build-and-push.yml, or the "Run workflow" button on the Actions tab.
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
