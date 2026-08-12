@@ -481,15 +481,19 @@ class TestEstimateScanSeconds:
 class TestFetchTrueSenderTotals:
     """A scan's own `count` only reflects how many of a sender's messages
     fell within the scanned window - fetch_true_sender_totals fills in the
-    real total (Gmail's own resultSizeEstimate) so the UI isn't showing a
-    number that understates what an action would actually affect."""
+    real total by paginating messages.list() to exhaustion and counting
+    actual results, not Gmail's resultSizeEstimate field (dropped after it
+    was found in real use to inflate badly enough to be untrustworthy - see
+    the function's own docstring)."""
 
-    def _service(self, result_size_estimates):
+    def _service(self, pages_per_call):
         """MagicMock Gmail service whose messages().list().execute() returns
-        result_size_estimates[call_index] in call order."""
+        pages_per_call[call_index] in call order - each a list of message
+        dicts for one page (an empty nextPageToken-less final page ends
+        that sender's pagination)."""
         service = MagicMock()
         service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
-            {"resultSizeEstimate": n} for n in result_size_estimates
+            {"messages": [{"id": f"m{i}"} for i in range(n)]} for n in pages_per_call
         ]
         return service
 
@@ -505,6 +509,42 @@ class TestFetchTrueSenderTotals:
         assert senders[0]["total_count"] == 142
         assert senders[1]["total_count"] == 7
 
+    def test_counts_exactly_not_via_result_size_estimate(self):
+        """Regression test: a real repro during PR review found
+        resultSizeEstimate summing to a total (7,437 across 37 senders)
+        that exceeded the account's actual inbox size. The count must come
+        from actually counting paginated results, never that field."""
+        senders = [{"email": "a@example.com", "count": 3}]
+        service = MagicMock()
+        service.users.return_value.messages.return_value.list.return_value.execute.return_value = {
+            "messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}],
+            # A wildly inflated estimate must be ignored entirely - only
+            # the actual returned message count is trusted.
+            "resultSizeEstimate": 999999,
+        }
+
+        fetch_true_sender_totals(service, senders, None, {})
+
+        assert senders[0]["total_count"] == 3
+
+    def test_paginates_across_multiple_pages_for_one_sender(self):
+        """A sender with more than 500 matching messages needs more than
+        one messages.list() page - the total must sum across all of them,
+        not just the first."""
+        senders = [{"email": "a@example.com", "count": 3}]
+        service = MagicMock()
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {
+                "messages": [{"id": f"m{i}"} for i in range(500)],
+                "nextPageToken": "page2",
+            },
+            {"messages": [{"id": f"m{i}"} for i in range(120)]},
+        ]
+
+        fetch_true_sender_totals(service, senders, None, {})
+
+        assert senders[0]["total_count"] == 620
+
     def test_queries_each_sender_scoped_to_filters(self):
         senders = [{"email": "a@example.com", "count": 3}]
         service = self._service([142])
@@ -516,14 +556,14 @@ class TestFetchTrueSenderTotals:
         assert "from:a@example.com" in query
         assert "older_than:30d" in query
 
-    def test_missing_result_size_estimate_falls_back_to_sampled_count(self):
-        senders = [{"email": "a@example.com", "count": 3}]
+    def test_no_matching_messages_gives_zero_total(self):
+        senders = [{"email": "a@example.com", "count": 0}]
         service = MagicMock()
         service.users.return_value.messages.return_value.list.return_value.execute.return_value = {}
 
         fetch_true_sender_totals(service, senders, None, {})
 
-        assert senders[0]["total_count"] == 3
+        assert senders[0]["total_count"] == 0
 
     def test_per_sender_failure_falls_back_without_aborting_the_rest(self):
         senders = [
@@ -533,7 +573,7 @@ class TestFetchTrueSenderTotals:
         service = MagicMock()
         service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
             Exception("transient error"),
-            {"resultSizeEstimate": 99},
+            {"messages": [{"id": f"m{i}"} for i in range(99)]},
         ]
 
         fetch_true_sender_totals(service, senders, None, {})

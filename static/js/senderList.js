@@ -366,16 +366,13 @@ class SenderListView {
         rowsContainer.className = 'message-rows';
         wrap.appendChild(rowsContainer);
 
-        const subjects = sender.subjects || [];
-        const messageIds = sender.message_ids || [];
-
         const loadMoreBtn = document.createElement('button');
         loadMoreBtn.type = 'button';
         loadMoreBtn.className = 'message-row-load-more';
         rowsContainer.appendChild(loadMoreBtn);
-        loadMoreBtn.addEventListener('click', () => this._revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn, row));
+        loadMoreBtn.addEventListener('click', () => this._revealMoreMessages(rowsContainer, sender, loadMoreBtn, row));
 
-        this._revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn, row);
+        this._revealMoreMessages(rowsContainer, sender, loadMoreBtn, row);
 
         return wrap;
     }
@@ -383,13 +380,15 @@ class SenderListView {
     // Reveals the next MESSAGE_PAGE_SIZE message rows into rowsContainer,
     // tracking how many are already shown via the container's own child
     // count (minus the "Load more" button itself) - no separate counter to
-    // keep in sync. All data is already in `subjects`/`messageIds` (the
-    // scan fetched every matched message, see module comment) so this never
-    // makes a network call. Newly-revealed rows are initialized to the
-    // parent sender-row's *current* checkbox state, read fresh each call -
-    // covers both the first reveal and a later "Load more" after the
-    // parent's been toggled since expand.
-    _revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn, row) {
+    // keep in sync. All data is already in `sender.subjects`/`message_ids`
+    // (the scan fetched every matched message, see module comment) so this
+    // never makes a network call. Newly-revealed rows are initialized to
+    // the parent sender-row's *current* checkbox state, read fresh each
+    // call - covers both the first reveal and a later "Load more" after
+    // the parent's been toggled since expand.
+    _revealMoreMessages(rowsContainer, sender, loadMoreBtn, row) {
+        const subjects = sender.subjects || [];
+        const messageIds = sender.message_ids || [];
         const parentChecked = row.querySelector('.row-select-cb')?.checked ?? true;
         const shown = rowsContainer.children.length - 1;
         const next = Math.min(shown + MESSAGE_PAGE_SIZE, subjects.length);
@@ -403,8 +402,22 @@ class SenderListView {
         if (remaining > 0) {
             loadMoreBtn.textContent = `Load 20 more (${remaining} remaining)`;
             loadMoreBtn.classList.remove('hidden');
-        } else {
-            loadMoreBtn.classList.add('hidden');
+            return;
+        }
+        loadMoreBtn.classList.add('hidden');
+
+        // The preview can only ever show what the scan actually fetched
+        // (subjects.length === sender.count) - if the sender's real total
+        // is bigger, say so explicitly instead of the list just stopping
+        // with no explanation (Phase 4c round-2 finding: pairing an honest
+        // "X shown of Y total" with an unexplained preview cutoff at X was
+        // its own source of confusion).
+        const total = Math.max(sender.total_count ?? sender.count, sender.count);
+        if (total > subjects.length && !rowsContainer.querySelector('.message-row-preview-limit')) {
+            const note = document.createElement('div');
+            note.className = 'message-row-preview-limit';
+            note.textContent = `That's everything from this sender in your last scan. ${total} total match your filters — rescan with a higher limit to preview more.`;
+            rowsContainer.insertBefore(note, loadMoreBtn);
         }
     }
 

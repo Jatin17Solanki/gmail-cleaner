@@ -178,10 +178,11 @@ class TestMarkReadBulkExclusion:
 
 class TestScanSendersForMarkreadTrueTotals:
     """Phase 4c follow-up: a sender's `count` only reflects the scanned
-    window - the scan also fetches the real total (Gmail's own
-    resultSizeEstimate, scoped to unread mail same as the scan itself) so
-    the UI isn't showing a number that understates what mark-as-read would
-    actually affect."""
+    window - the scan also fetches the real, exact total (by paginating
+    messages.list() to exhaustion, not Gmail's unreliable
+    resultSizeEstimate field, scoped to unread mail same as the scan
+    itself) so the UI isn't showing a number that understates what
+    mark-as-read would actually affect."""
 
     @patch("app.services.gmail.mark_read.get_gmail_service")
     def test_scan_result_includes_total_count(self, mock_get_service):
@@ -190,7 +191,7 @@ class TestScanSendersForMarkreadTrueTotals:
         mock_get_service.return_value = (service, None)
         service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
             {"messages": [{"id": "m1"}]},
-            {"resultSizeEstimate": 24},
+            {"messages": [{"id": f"m{i}"} for i in range(24)]},
         ]
 
         scan_senders_for_markread(limit=10)
@@ -209,7 +210,7 @@ class TestScanSendersForMarkreadTrueTotals:
         mock_get_service.return_value = (service, None)
         service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
             {"messages": [{"id": "m1"}]},
-            {"resultSizeEstimate": 24},
+            {"messages": [{"id": f"m{i}"} for i in range(24)]},
         ]
 
         scan_senders_for_markread(limit=10)

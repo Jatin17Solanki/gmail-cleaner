@@ -322,9 +322,10 @@ class TestScanSendersForDeleteSubjectsUncapped:
 
 class TestScanSendersForDeleteTrueTotals:
     """Phase 4c follow-up: a sender's `count` only reflects the scanned
-    window - the scan also fetches the real total (Gmail's own
-    resultSizeEstimate) so the UI isn't showing a number that understates
-    what a delete would actually affect."""
+    window - the scan also fetches the real, exact total (by paginating
+    messages.list() to exhaustion, not Gmail's unreliable
+    resultSizeEstimate field) so the UI isn't showing a number that
+    understates what a delete would actually affect."""
 
     @patch("app.services.gmail.delete.get_gmail_service")
     def test_scan_result_includes_total_count(self, mock_get_service):
@@ -332,10 +333,11 @@ class TestScanSendersForDeleteTrueTotals:
         service = _mock_batch_service(["m1"], {"m1": response})
         mock_get_service.return_value = (service, None)
         # First call: the scan's own message-listing pagination (one
-        # message). Second call: the true-count pass for that one sender.
+        # message). Second call: the true-count pass for that one sender
+        # (312 real messages returned, not an estimate).
         service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
             {"messages": [{"id": "m1"}]},
-            {"resultSizeEstimate": 312},
+            {"messages": [{"id": f"m{i}"} for i in range(312)]},
         ]
 
         scan_senders_for_delete(limit=10)

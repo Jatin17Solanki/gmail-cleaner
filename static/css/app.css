@@ -490,6 +490,12 @@ body {
   text-decoration: underline;
 }
 
+.message-row-preview-limit {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 2px;
+}
+
 /* ----- Filter drawer ----- */
 
 .drawer-overlay {

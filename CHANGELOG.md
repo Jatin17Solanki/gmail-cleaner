@@ -359,6 +359,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       `test_delete.py`/`test_archive.py`/`test_mark_read.py` (the latter
       also confirming the true-count query stays scoped to `is:unread`,
       matching the scan itself). 442/442 tests passing (up from 434).
+  - **Round 3, from the human's continued review**: three more findings,
+    fixed in the same branch.
+    - **Correctness bug in round 2's own fix**: `fetch_true_sender_totals`
+      used Gmail's `resultSizeEstimate` field, which Google documents as
+      an *estimate*, not an exact count - a real repro during review found
+      it inflating badly enough that 37 senders summed to a "total" of
+      7,437 emails, exceeding the account's actual inbox size. Replaced
+      with an exact count via `messages.list()` paginated to exhaustion
+      (the same pattern the actual bulk-action functions already use) -
+      same 5-units-flat-per-call cost for any sender under 500 matching
+      messages (the common case), exact instead of approximate. All
+      `fetch_true_sender_totals` tests and the three scan-integration
+      tests rewritten around this (`test_counts_exactly_not_via_result_size_estimate`
+      is a direct regression test for the 7,437 repro).
+    - The always-visible explainer note's wording leaned on "your active
+      filters," which reads as inapplicable when a user has set none -
+      reworded to name the actual culprit directly: "the scan size above
+      only limits what's previewed, not what gets acted on."
+    - The new honest "X shown of Y total" row display (round 2) created an
+      unexplained gap of its own: "Load more" can only ever reveal what
+      the scan actually fetched (bounded by `count`), never the larger
+      `total_count`, since fetching further would mean new Gmail API calls
+      beyond what today's free client-side pagination does. Fixed with an
+      explanatory note once "Load more" is exhausted below the true total,
+      rather than the list just silently stopping. The larger fix (letting
+      "Load more" fetch beyond the scan window on demand) was explicitly
+      scoped out as a bigger, costed feature and logged as backlog item 12
+      in `PROGRESS.md` instead of built now.
+    - 444/444 tests passing (up from 442).
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases
