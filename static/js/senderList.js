@@ -586,11 +586,21 @@ class SenderListView {
     // bulk action affects every message matching sender+filters, not just
     // whatever fell within the scan's own window, so the selection summary
     // and confirm dialogs must reflect that real number, not understate it.
+    // Also subtracts each selected sender's own excluded (unchecked)
+    // message count - a sender with 38 total and 1 explicitly excluded
+    // message actually only has 37 affected, and the summary/confirm text
+    // must match what the backend will really do, not just the sender's
+    // raw total.
     getSelectedCount() {
-        const emails = this.getSelectedSenderEmails();
-        return this.results
-            .filter(r => emails.includes(r.email))
-            .reduce((sum, r) => sum + Math.max(r.total_count ?? r.count, r.count), 0);
+        return [...this.id('Rows').querySelectorAll('.sender-row')]
+            .filter(row => row.querySelector('.row-select-cb')?.checked)
+            .reduce((sum, row) => {
+                const sender = this.results.find(r => r.email === row.dataset.email);
+                if (!sender) return sum;
+                const total = Math.max(sender.total_count ?? sender.count, sender.count);
+                const excluded = this._excludedMessageIdsWithin(row).length;
+                return sum + Math.max(total - excluded, 0);
+            }, 0);
     }
 
     removeSendersFromResults(emails) {

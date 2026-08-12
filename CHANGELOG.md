@@ -388,6 +388,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       scoped out as a bigger, costed feature and logged as backlog item 12
       in `PROGRESS.md` instead of built now.
     - 444/444 tests passing (up from 442).
+  - **Round 4, from the human's own manual verification pass**: a sender
+    with "17 shown of 38 total" and one message explicitly unchecked
+    showed "Delete 38 emails from 1 sender?" in the confirm dialog -
+    ignoring the exclusion entirely - even though the actual delete
+    correctly affected only 37 (confirmed via Restore showing 37 deleted).
+    The backend was already correct; this was purely a frontend display
+    bug. Root cause: `getSelectedCount()` (which drives both the
+    selection-bar summary and Delete's confirm dialog) summed each
+    selected sender's real total but never subtracted that sender's own
+    excluded message count. Fixed to iterate selected sender rows
+    directly and subtract each one's own excluded-checkbox count from its
+    total before summing - so "1 sender, 38 total, 1 excluded" now
+    correctly shows 37. No backend changes needed (the actual delete
+    already respected exclusions correctly). No new automated test (no JS
+    harness - backlog item 3); verified via `node --check` and the fix's
+    logic mirrors the same subtraction the backend already performs.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases
