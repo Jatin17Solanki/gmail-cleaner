@@ -404,6 +404,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     already respected exclusions correctly). No new automated test (no JS
     harness - backlog item 3); verified via `node --check` and the fix's
     logic mirrors the same subtraction the backend already performs.
+- Housekeeping pass ahead of the Final (E2E) phase, raised directly by the
+  human, not tied to a numbered PRD phase:
+  - Default scan limit changed from 1000 to 500 (dropdown default in
+    `templates/index.html`'s `sender_view` macro, the three scan request
+    schemas' `Field(default=...)` in `app/models/schemas.py`, and
+    `senderList.js`'s defensive fallback), for a lighter first-scan
+    experience.
+  - Added a favicon (`static/favicon.svg`, an original small SVG mail
+    glyph in the design system's accent color - no external asset), wired
+    into both `templates/index.html` and `templates/login.html`.
+  - The unsubscribe badge's `Auto`/`Open link`/`No unsubscribe link`
+    meanings already had a native hover tooltip (Phase 3) but no visible
+    affordance hinting it existed. Added a persistent `ti-info-circle`
+    icon next to Delete's topbar (the only view with unsubscribe badges),
+    matching the existing quota-explainer icon pattern rather than
+    inventing a new one.
+  - Rewrote `ARCHITECTURE.md`, untouched since the pre-fork upstream
+    commit and describing an app that no longer exists (single-account
+    `token.json`, `scan_emails()`, `/api/scan`/`/api/mark-read`, no login
+    gate/quota tracker/Routines/Restore). Now documents the current
+    multi-account OAuth flow, the login gate as a separate layer, the
+    real services/API layout, and the confirmed 25-message (not 100)
+    concurrent-batch clamp from the Phase 4a2 quota investigation.
+  - README: removed a stale "(copy that folder into this repo root if you
+    don't see it)" note on `wireframes/` (the folder is and always was
+    tracked in git), corrected the "100 emails per API call" claim to 25
+    to match the current quota-clamped batch size, and linked
+    `ARCHITECTURE.md` from the Contributing section.
+  - Added a screenshot gallery to the README (`media/screenshots/`),
+    replacing the wireframes-only reference (GitHub renders `wireframes/
+    *.html` links as plain source, not previews) with a redacted
+    walkthrough of the real running app, in user-journey order (filter →
+    scan → per-email preview → act → undo via Restore → automate via
+    Routines). Account email and any job-search-specific sender content
+    were cropped/redacted before committing.
+  - A full live E2E pass against a real account (`claude-in-chrome`,
+    human-supervised, real delete/archive/mark-read/label/routine actions
+    each immediately verified and reversed via Restore) surfaced three
+    real, previously-undetected bugs in code that predates this branch,
+    fixed here per the human's explicit request:
+    - **Selection-bar summary went stale after excluding a message.**
+      Selecting a sender then unchecking one of its previewed messages
+      left the bottom bar's "N emails selected" text showing the old,
+      pre-exclusion count - `getSelectedCount()` itself already computed
+      the corrected number (used correctly by Delete's confirm dialog),
+      but nothing ever re-ran `_updateSelectionBar()` when a per-message
+      checkbox changed, only when the sender-level checkbox did. Fixed by
+      adding a `change` listener to each message checkbox in
+      `senderList.js::_buildMessageRow()`.
+    - **An invalid scan filter failed silently.** A sender filter value
+      that isn't a full email/domain (e.g. `google` instead of
+      `google.com`) is correctly rejected by the backend with a 422, but
+      `senderList.js::scan()` never checked `response.ok` before polling
+      for results - a rejected scan just left whatever status the
+      *previous* scan set in place, so the UI silently redisplayed stale
+      results with no error shown. Fixed by checking `response.ok` and
+      surfacing the backend's validation message via the existing error
+      toast.
+    - **Delete's confirm step used a native `window.confirm()`**, the only
+      confirmation surface in the app not using the design system's own
+      `.modal-overlay` pattern (already used by Routines' run-confirm
+      step). Functioned correctly for real users but is visually
+      inconsistent with the rest of the app and froze this session's
+      browser-automation testing (native dialogs block all further CDP
+      commands). Replaced with an in-app modal
+      (`{{ prefix }}ConfirmOverlay`, added as an opt-in
+      `show_delete_confirm_modal` parameter on the shared `sender_view`
+      Jinja macro so it stays Delete-only) - same summary text, same
+      Cancel/Delete actions, no native dialog.
+  - Also confirmed working end-to-end against the real account and not
+    otherwise changed: scan/filter/select-all/per-message exclude across
+    Delete/Archive/Mark-as-read, the Gmail deep-link (closes out Phase
+    4c's previously-unverified assumption - opens the correct message in
+    the correct signed-in account), delete/archive/mark-read/label-add
+    each followed by a Restore, and Routines create → preview → run →
+    Restore (36 real messages, cleanly undone). Quota-aware retry pacing
+    (Phase 4a2) was observed firing live under real rate-limiting.
+  - **Investigated, not reproduced**: the Restore/Routines "no scrolling"
+    report. With 6+ real overflowing entries in both tabs, `.list-area`'s
+    internal scroll worked correctly in this session's browser/viewport
+    (confirmed via `scrollTop`, not just visually - the container itself
+    scrolled, the page body did not). No code change made; left for the
+    human to re-test in their own environment before anyone guess-fixes
+    CSS that isn't observably broken.
+  - **Known gap, not addressed this round**: account-switching couldn't be
+    exercised in this session's E2E pass - only one account was
+    registered/signed in, by explicit instruction, to keep the session
+    scoped to a single known-safe test account.
+- Full README revamp, at the human's explicit direction, on this same
+  branch: a table of contents, a rewritten Features section (reflects
+  today's actual feature set - Restore, Routines, multi-account, quota
+  awareness, login gate - not the pre-fork one that was still just "Bulk
+  Unsubscribe" framed), reordered sections, toned-down screenshot
+  captions, the Roadmap condensed into one scannable table (was six
+  separate prose sections duplicating `CHANGELOG.md`), a new Architecture
+  section pointing at `ARCHITECTURE.md`, "Need Help Setting Up" rewritten
+  in third person and linking to the original author's own offer instead
+  of duplicating his pitch/email in this fork's own voice, an updated FAQ
+  (the multi-account entry was stale - described sign-out/sign-in instead
+  of the real account switcher; added an `APP_PASSWORD`/login-gate entry
+  that didn't exist before at all), and a shortened `Credits` section.
+  The Wireframes section was folded into a one-line Contributing pointer
+  rather than staying its own section.
+- Two real correctness issues found and fixed while reviewing the README
+  for accuracy: Setup's `git clone` command pointed at the upstream repo
+  (`Gururagavendra/gmail-cleaner`) instead of this fork
+  (`Jatin17Solanki/gmail-cleaner`), and `docker-compose.yml` defaulted to
+  pulling upstream's published image - silently running the *original*
+  app for anyone who just followed the README, missing every fix/feature
+  from Phases 1 through 4c, since this fork doesn't publish its own image
+  yet. `docker-compose.yml` now builds locally by default, with clearly
+  commented-out placeholders for both this fork's own image (once
+  published) and upstream's image as an explicit, labeled alternative.
+- Restored a small "Support project" link to the app's sidebar, pointing
+  to the original author's own Buy Me a Coffee page
+  (`buymeacoffee.com/gururagavendra`) - present in the pre-fork UI (a
+  "Support Project" button, same destination), lost as incidental
+  collateral of Phase 3's full CSS/template rewrite rather than a
+  deliberate removal. New `.sidebar-support-link` in `app.css`,
+  deliberately quiet styling (muted color, small text) rather than a
+  prominent CTA, sitting at the bottom of the sidebar via a new `flex: 1`
+  on `.nav-menu`.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

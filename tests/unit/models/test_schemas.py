@@ -216,7 +216,7 @@ class TestArchiveScanRequest:
     def test_default_values(self):
         """Default values should be set correctly."""
         request = ArchiveScanRequest()
-        assert request.limit == 1000
+        assert request.limit == 500
         assert request.filters is None
 
     def test_limit_below_minimum(self):
@@ -243,7 +243,7 @@ class TestMarkReadScanRequest:
     def test_default_values(self):
         """Default values should be set correctly."""
         request = MarkReadScanRequest()
-        assert request.limit == 1000
+        assert request.limit == 500
         assert request.filters is None
 
     def test_limit_below_minimum(self):

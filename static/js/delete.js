@@ -106,7 +106,7 @@ GmailCleaner.Delete = (() => {
         return pollDownload(attempts + 1);
     }
 
-    async function deleteSelected() {
+    function deleteSelected() {
         const emails = view.getSelectedSenderEmails();
         if (emails.length === 0) {
             GmailCleaner.UI.showErrorToast('No senders selected');
@@ -117,9 +117,21 @@ GmailCleaner.Delete = (() => {
         // sender + active filters, since that's what the action itself
         // actually affects, so the confirm step must not understate it.
         const count = view.getSelectedCount();
-        if (!confirm(`Delete ${count} email${count === 1 ? '' : 's'} from ${emails.length} sender${emails.length === 1 ? '' : 's'}? This includes all of their mail matching your active filters, not just what's shown here. They'll be moved to Trash and kept for 30 days.`)) {
-            return;
+        const summary = view.id('ConfirmSummary');
+        if (summary) {
+            summary.textContent = `Delete ${count} email${count === 1 ? '' : 's'} from ${emails.length} sender${emails.length === 1 ? '' : 's'}? This includes all of their mail matching your active filters, not just what's shown here. They'll be moved to Trash and kept for 30 days.`;
         }
+        view.id('ConfirmOverlay')?.classList.remove('hidden');
+    }
+
+    function closeConfirm() {
+        view.id('ConfirmOverlay')?.classList.add('hidden');
+    }
+
+    async function confirmDelete() {
+        const emails = view.getSelectedSenderEmails();
+        closeConfirm();
+        if (emails.length === 0) return;
         try {
             await fetch('/api/delete-emails-bulk', {
                 method: 'POST',
@@ -146,6 +158,8 @@ GmailCleaner.Delete = (() => {
     }
 
     buildActionButtons();
+    view.id('ConfirmCancelBtn')?.addEventListener('click', closeConfirm);
+    view.id('ConfirmDeleteBtn')?.addEventListener('click', confirmDelete);
 
     return { view };
 })();

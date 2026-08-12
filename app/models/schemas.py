@@ -114,7 +114,7 @@ class LoginRequest(BaseModel):
 class DeleteScanRequest(BaseModel):
     """Request to scan senders for deletion."""
 
-    limit: int = Field(default=1000, ge=1, le=10000, description="Max emails to scan")
+    limit: int = Field(default=500, ge=1, le=10000, description="Max emails to scan")
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
     )
@@ -123,7 +123,7 @@ class DeleteScanRequest(BaseModel):
 class ArchiveScanRequest(BaseModel):
     """Request to scan senders for archiving."""
 
-    limit: int = Field(default=1000, ge=1, le=10000, description="Max emails to scan")
+    limit: int = Field(default=500, ge=1, le=10000, description="Max emails to scan")
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
     )
@@ -132,7 +132,7 @@ class ArchiveScanRequest(BaseModel):
 class MarkReadScanRequest(BaseModel):
     """Request to scan senders with unread mail."""
 
-    limit: int = Field(default=1000, ge=1, le=10000, description="Max emails to scan")
+    limit: int = Field(default=500, ge=1, le=10000, description="Max emails to scan")
     filters: Optional[FiltersModel] = Field(
         default=None, description="Gmail filter options"
     )

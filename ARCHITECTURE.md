@@ -1,13 +1,27 @@
 # OAuth Flow & Gmail Cleaner Architecture Guide
 
-This document explains how OAuth 2.0 works and how the Gmail Cleaner application uses it to access your Gmail.
+This document explains how OAuth 2.0 works and how this fork of Gmail Cleaner
+uses it to access Gmail, plus a tour of the current backend/frontend
+architecture. It's aimed at contributors reading the code for the first
+time, not end users setting the app up (see [`README.md`](README.md) for
+setup instructions).
+
+> This file describes the app as it exists today, after several rounds of
+> fixes and features on top of the original
+> [Gururagavendra/gmail-cleaner](https://github.com/Gururagavendra/gmail-cleaner)
+> fork base — multi-account support, a login gate, quota-aware batching,
+> Restore-from-Trash, Routines, and per-email preview. If you're reading an
+> older mirror of this file, some of the code snippets below (single-account
+> `token.json`, `scan_emails()`, `/api/scan`) describe the pre-fork app and
+> no longer match this repo.
 
 ## Table of Contents
 1. [OAuth 2.0 Flow Explained](#oauth-20-flow-explained)
-2. [How Gmail Cleaner Uses OAuth](#how-gmail-cleaner-uses-oauth)
-3. [Application Architecture](#application-architecture)
-4. [Gmail API Operations](#gmail-api-operations)
-5. [Code Walkthrough](#code-walkthrough)
+2. [How This App Uses OAuth](#how-this-app-uses-oauth)
+3. [The Login Gate (a Separate Layer)](#the-login-gate-a-separate-layer)
+4. [Application Architecture](#application-architecture)
+5. [Gmail API Operations & Quota Awareness](#gmail-api-operations--quota-awareness)
+6. [Feature Walkthrough](#feature-walkthrough)
 
 ---
 
@@ -15,7 +29,10 @@ This document explains how OAuth 2.0 works and how the Gmail Cleaner application
 
 ### What is OAuth 2.0?
 
-OAuth 2.0 is an **authorization framework** that allows applications to access user data (like Gmail) **without** storing the user's password. Instead, the user grants permission through Google's secure login page.
+OAuth 2.0 is an **authorization framework** that lets an application access
+a user's data (here, Gmail) **without** ever seeing the user's Google
+password. The user grants permission through Google's own login/consent
+page; Google then hands the app a token it can use for API calls.
 
 ### The OAuth 2.0 Flow (Step by Step)
 
@@ -24,167 +41,185 @@ OAuth 2.0 is an **authorization framework** that allows applications to access u
 │  User   │         │  App     │         │  Google  │         │  Gmail  │
 │ Browser │         │ (Server) │         │  OAuth   │         │   API   │
 └────┬────┘         └────┬─────┘         └────┬─────┘         └────┬────┘
-     │                   │                    │                    │
      │ 1. Click "Sign In" │                    │                    │
      │──────────────────>│                    │                    │
-     │                   │                    │                    │
-     │                   │ 2. Create OAuth URL │                    │
-     │                   │    (with client_id,│                    │
+     │                   │ 2. Build OAuth URL  │                    │
+     │                   │    (client_id,      │                    │
      │                   │     redirect_uri,   │                    │
      │                   │     scopes)         │                    │
-     │                   │                    │                    │
-     │                   │ 3. Get auth URL    │                    │
-     │                   │<───────────────────│                    │
-     │                   │                    │                    │
-     │ 4. Redirect to     │                    │                    │
-     │    Google Login    │                    │                    │
+     │ 3. Redirect/open   │                    │                    │
+     │    Google login    │<───────────────────                    │
      │<───────────────────                    │                    │
-     │                   │                    │                    │
-     │ 5. User logs in &  │                    │                    │
+     │ 4. User logs in &  │                    │                    │
      │    grants access   │                    │                    │
      │───────────────────────────────────────>│                    │
-     │                   │                    │                    │
-     │                   │                    │ 6. Google generates │
-     │                   │                    │    authorization    │
-     │                   │                    │    code             │
-     │                   │                    │                    │
-     │ 7. Redirect with   │                    │                    │
-     │    code            │                    │                    │
+     │                   │                    │ 5. Auth code issued │
+     │ 6. Redirect w/ code │                    │                    │
      │<───────────────────────────────────────│                    │
-     │                   │                    │                    │
-     │ 8. Send code to    │                    │                    │
+     │ 7. Browser hits    │                    │                    │
      │    callback URL    │                    │                    │
      │──────────────────>│                    │                    │
-     │                   │                    │                    │
-     │                   │ 9. Exchange code    │                    │
+     │                   │ 8. Exchange code    │                    │
      │                   │    for tokens       │                    │
      │                   │───────────────────>│                    │
-     │                   │                    │                    │
-     │                   │ 10. Receive tokens  │                    │
-     │                   │     (access_token,  │                    │
-     │                   │      refresh_token) │                    │
+     │                   │ 9. access_token +   │                    │
+     │                   │    refresh_token    │                    │
      │                   │<────────────────────│                    │
-     │                   │                    │                    │
-     │                   │ 11. Save tokens    │                    │
-     │                   │     to token.json   │                    │
-     │                   │                    │                    │
-     │                   │ 12. Use access_token│                    │
-     │                   │     to call Gmail   │                    │
-     │                   │     API            │                    │
+     │                   │ 10. Save token,     │                    │
+     │                   │     keyed by email  │                    │
+     │                   │ 11. Call Gmail API  │                    │
      │                   │─────────────────────────────────────────>│
-     │                   │                    │                    │
-     │                   │ 13. Get email data │                    │
+     │                   │ 12. Email data      │                    │
      │                   │<─────────────────────────────────────────│
-     │                   │                    │                    │
-     │ 14. Display emails │                    │                    │
+     │ 13. UI updates     │                    │                    │
      │<───────────────────                    │                    │
 ```
 
 ### Key OAuth Concepts
 
-#### 1. **Client Credentials** (`credentials.json`)
+#### 1. `credentials.json` — your Google Cloud OAuth client
+
+Downloaded from **your own** Google Cloud project (README's "Get Google
+OAuth Credentials" section) — this repo never ships one. It comes in one of
+two shapes depending on which client type you created:
+
 ```json
-{
-  "installed": {
-    "client_id": "your-client-id.apps.googleusercontent.com",
-    "client_secret": "your-client-secret",
+// Desktop app credentials (local Python, no Docker)
+{ "installed": {
+    "client_id": "...apps.googleusercontent.com",
+    "client_secret": "...",
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
     "token_uri": "https://oauth2.googleapis.com/token",
-    "redirect_uris": ["http://localhost:8767/"]
-  }
-}
+    "redirect_uris": ["http://localhost"]
+} }
 ```
 
-- **Client ID**: Public identifier for your app
-- **Client Secret**: Private key (keep this secret!)
-- **Redirect URI**: Where Google sends the user after login
+```json
+// Web application credentials (Docker / remote server)
+{ "web": {
+    "client_id": "...apps.googleusercontent.com",
+    "client_secret": "...",
+    "redirect_uris": ["http://localhost:8767/"]
+} }
+```
 
-#### 2. **Scopes** (Permissions)
+`app/services/auth.py::_get_credentials_path()` reads whichever shape is
+present; `is_web_auth_mode()` picks the OAuth flow variant based on which
+key (`installed` vs `web`) is in the file, not on whether Docker is
+detected — a "Web application" credential forces the manual-URL flow even
+when run locally, and vice versa.
+
+**This file is what links a running instance of the app to a specific
+Google Cloud project** — nothing about which git remote you cloned or
+forked from matters here. It's gitignored and never touched by git history.
+
+#### 2. Scopes (Permissions)
 ```python
 scopes = [
-    "https://www.googleapis.com/auth/gmail.readonly",  # Read emails
-    "https://www.googleapis.com/auth/gmail.modify"     # Modify emails (delete, mark read)
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",  # delete/archive/label/mark-read all use this
 ]
 ```
 
-#### 3. **Tokens**
+#### 3. Tokens
 
-- **Access Token**: Short-lived (1 hour), used for API calls
-- **Refresh Token**: Long-lived, used to get new access tokens
-- **Token Storage**: Saved in `token.json` after first login
+- **Access token**: short-lived (~1 hour), used for API calls.
+- **Refresh token**: long-lived, used to silently mint new access tokens
+  (`app/services/auth.py::_try_refresh_creds()`).
+- **Storage**: **per account**, not a single shared `token.json` — see
+  next section.
 
 ---
 
-## How Gmail Cleaner Uses OAuth
+## How This App Uses OAuth
 
-### Two Authentication Modes
+### Multi-account token storage
 
-#### Mode 1: Desktop App (Local Python)
-- **When**: Running `uv run python main.py` locally
-- **How**: Opens browser automatically, uses `localhost` redirect
-- **Flow**: `InstalledAppFlow.run_local_server()`
+Phase 4a replaced the original single `token.json` with per-account
+storage:
 
-#### Mode 2: Web Application (Docker/Remote)
-- **When**: Running in Docker or on remote server
-- **How**: Prints OAuth URL to logs, user copies and pastes
-- **Flow**: Same OAuth flow, but manual browser opening
+- `app/services/accounts.py`: `<data dir>/tokens/<email>.json` holds each
+  account's token; `<data dir>/accounts.json` is a small index of
+  registered accounts + which one is active (`get_active_account()`/
+  `set_active_account()`).
+- A pre-multi-account `token.json`, if found, is migrated in place the
+  first time its owning email is confirmed via a Gmail profile call
+  (`accounts.migrate_legacy_token()`), not as a separate manual step.
+- `app/services/auth.py::get_gmail_service(add_new_account=False)` is the
+  single entry point everything else calls: with the default `False` it
+  uses the active account's token (refreshing if expired); with
+  `add_new_account=True` (the "Add another account" button) it always runs
+  a fresh consent flow and saves the result under a *new* email-keyed slot,
+  never overwriting the currently active account's token.
+- `switch_active_account(email)` just flips the active pointer in
+  `accounts.json` — no new OAuth round-trip, no re-consent.
+- `sign_out()` removes only the active account's token and promotes another
+  registered account if one exists, instead of always fully logging out.
 
-### The Authentication Process in Code
+### Two OAuth transports (Desktop vs. Docker/remote)
 
-#### Step 1: Check for Existing Token
+Which one runs is decided by `is_web_auth_mode()` (based on the
+`credentials.json` shape above, see `app/services/auth.py`):
+
+- **Desktop-style** (`_perform_oauth_flow`, `open_browser=True`): a local
+  callback server opens automatically in the user's default browser.
+- **Web-app-style** (Docker/remote): the same local callback server starts,
+  but the browser isn't auto-opened. The authorization URL is printed to
+  stdout (`docker logs ...`) **and** stashed in
+  `state.pending_auth_url["url"]`, exposed via `GET /api/auth-status`'s
+  `pending_auth_url` field — today the frontend (`static/js/auth.js`) only
+  shows an alert telling the user to check Docker logs and doesn't render
+  `pending_auth_url` as a clickable link, even though the data is already
+  there. A real gap, not a hard platform limitation — worth picking up if
+  the manual copy-paste step becomes a recurring pain point.
+
+Both transports share one 90-second-timeout callback server
+(`_run_oauth_callback_server`/`_wait_for_callback`) — a fix from this
+fork's Phase 1, since the upstream flow could hang forever if the consent
+tab was closed before finishing.
+
+### The authentication process in code (current)
+
 ```python
-# app/services/auth.py - get_gmail_service()
+# app/services/auth.py (simplified — see the real file for full detail)
 
-if os.path.exists("token.json"):
-    creds = Credentials.from_authorized_user_file("token.json", scopes)
-    if creds.valid:
-        # Already authenticated! Use existing token
-        return build("gmail", "v1", credentials=creds)
+def get_gmail_service(add_new_account: bool = False):
+    if not add_new_account:
+        token_path = accounts.resolve_active_token_path()
+        if token_path and os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+            creds = _try_refresh_creds(creds, token_path) or creds
+            if creds and creds.valid:
+                return build("gmail", "v1", credentials=creds), None
+
+    # No valid token for the active account (or add_new_account=True):
+    # run OAuth, save under this account's own token file, register it.
+    _run_oauth_and_save_token(creds_path, add_new_account=add_new_account)
+    ...
 ```
 
-#### Step 2: Refresh Expired Token
-```python
-if creds.expired and creds.refresh_token:
-    creds.refresh(Request())  # Get new access token
-    # Save refreshed token
-    with open("token.json", "w") as token:
-        token.write(creds.to_json())
-```
+Frontend (`static/js/auth.js::signIn()`) → `POST /api/sign-in` (runs OAuth
+in a background thread) → polls `GET /api/auth-status` until
+`logged_in: true` (and, for "Add another account", until the *active
+email actually changes* — the previously-active account stays
+`logged_in: true` the whole time a new consent screen is open).
 
-#### Step 3: Start OAuth Flow (If No Token)
-```python
-# Create OAuth flow from credentials.json
-flow = InstalledAppFlow.from_client_secrets_file(
-    "credentials.json",
-    scopes
-)
+---
 
-# Run local server to handle OAuth callback
-new_creds = flow.run_local_server(
-    port=8767,              # Port for OAuth callback
-    bind_addr="0.0.0.0",    # Docker: 0.0.0.0, Local: localhost
-    open_browser=True,      # Auto-open browser (local only)
-    prompt="consent"        # Always show consent screen
-)
+## The Login Gate (a Separate Layer)
 
-# Save tokens
-with open("token.json", "w") as token:
-    token.write(new_creds.to_json())
-```
+**Don't confuse this with Gmail OAuth above** — it's a completely different
+mechanism, added in Phase 1:
 
-### What Happens During OAuth?
-
-1. **User clicks "Sign In"** → Frontend calls `/api/sign-in`
-2. **Backend starts OAuth** → `get_gmail_service()` detects no token
-3. **OAuth flow starts** → `flow.run_local_server()`:
-   - Starts HTTP server on port 8767
-   - Generates OAuth URL: `https://accounts.google.com/o/oauth2/auth?...`
-   - Opens browser (or prints URL in Docker)
-4. **User authorizes** → Google shows consent screen
-5. **Google redirects** → `http://localhost:8767/?code=AUTHORIZATION_CODE`
-6. **Server receives code** → Exchanges code for tokens
-7. **Tokens saved** → Written to `token.json`
-8. **Gmail API ready** → Can now make API calls
+- `app/core/security.py` + `app/core/middleware.py`: a single shared
+  password (`APP_PASSWORD` env var), hashed and checked against a session
+  cookie, gating **every route in the app** (including `/docs`/`/redoc`).
+- This protects the *UI itself* (so the app isn't wide open to anyone who
+  can reach the port it's listening on) — it has nothing to do with which
+  Google account is signed in via OAuth. A single-user instance can have
+  one shared app password and multiple Gmail accounts signed in and
+  switchable behind it.
+- `app/api/auth_gate.py`: `POST /api/login`, `POST /api/logout`.
 
 ---
 
@@ -193,423 +228,262 @@ with open("token.json", "w") as token:
 ### High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Frontend (Browser)                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │ auth.js  │  │scanner.js│  │delete.js │  │markread.js│   │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘   │
-│       │             │              │              │          │
-│       └─────────────┴──────────────┴──────────────┘          │
-│                          │                                    │
-│                    HTTP/JSON API                               │
-└──────────────────────────┼────────────────────────────────────┘
-                           │
-┌──────────────────────────┼────────────────────────────────────┐
-│                    FastAPI Backend                            │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  actions.py  │  │  status.py   │  │   main.py    │      │
-│  │  (POST)      │  │  (GET)       │  │  (Routes)     │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         │                 │                  │               │
-│         └─────────────────┴──────────────────┘               │
-│                          │                                    │
-│  ┌───────────────────────┼───────────────────────┐            │
-│  │              Services Layer                   │            │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐   │            │
-│  │  │ auth.py  │  │ gmail/   │  │  state   │   │            │
-│  │  │          │  │  scan.py  │  │          │   │            │
-│  │  │          │  │ delete.py │  │          │   │            │
-│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘   │            │
-│  └───────┼─────────────┼──────────────┼────────┘            │
-└──────────┼─────────────┼──────────────┼─────────────────────┘
-           │             │              │
-           │             │              │
-    ┌──────┴─────┐  ┌─────┴──────┐  ┌───┴────┐
-    │ OAuth 2.0 │  │ Gmail API  │  │ State  │
-    │  Tokens   │  │  (REST)    │  │ (In-   │
-    │           │  │            │  │ Memory)│
-    └───────────┘  └────────────┘  └────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│                          Frontend (Browser)                            │
+│  auth.js  senderList.js  delete.js  markread.js  archive.js  labels.js │
+│  restore.js  routines.js  ui.js  main.js                               │
+│                              │  HTTP/JSON                              │
+└──────────────────────────────┼──────────────────────────────────────── ┘
+                                │
+┌───────────────────────────────┼─────────────────────────────────────────┐
+│                         FastAPI Backend (app/main.py)                   │
+│  ┌────────────┐ ┌───────────┐ ┌──────────┐ ┌───────────┐ ┌───────────┐ │
+│  │ actions.py │ │ status.py │ │restore.py│ │accounts.py│ │routines.py│ │
+│  │ (POST)     │ │ (GET)     │ │          │ │           │ │           │ │
+│  └─────┬──────┘ └────┬──────┘ └────┬─────┘ └─────┬─────┘ └─────┬─────┘ │
+│        │             │             │             │             │        │
+│  auth_gate.py (login-gate endpoints) · app/core/middleware.py (session  │
+│  check on every request)                                                │
+│        └─────────────┴─────────────┴─────────────┴─────────────┘        │
+│                                │                                        │
+│  ┌─────────────────────────────┼──────────────────────────────────┐    │
+│  │                      Services layer                            │    │
+│  │  auth.py · accounts.py · operation_log.py · routines.py        │    │
+│  │  gmail/ ─ helpers.py (query builder) · quota.py (rate limiting)│    │
+│  │        ─ delete.py · archive.py · mark_read.py · labels.py     │    │
+│  │        ─ important.py · unsubscribe.py · download.py           │    │
+│  │        ─ restore.py · routines.py                               │    │
+│  └──────────────┬──────────────────────┬──────────────┬───────────┘    │
+└─────────────────┼──────────────────────┼──────────────┼────────────────┘
+                   │                      │              │
+          ┌────────┴────────┐   ┌─────────┴────────┐  ┌──┴───────────┐
+          │ OAuth tokens     │   │ Gmail API (REST) │  │ Local state  │
+          │ tokens/<email>   │   │ via googleapi-    │  │ + JSON files │
+          │ .json,           │   │ client + quota.py │  │ (state.py:   │
+          │ accounts.json    │   │ pacing/backoff    │  │ in-memory;   │
+          └──────────────────┘   └───────────────────┘  │ operations.  │
+                                                          │ json,        │
+                                                          │ routines.json│
+                                                          │ on disk)     │
+                                                          └──────────────┘
 ```
 
 ### Component Breakdown
 
-#### 1. **Frontend (Static Files)**
-- **Location**: `static/js/`, `static/css/`, `templates/`
-- **Technology**: Vanilla JavaScript, HTML, CSS
-- **Purpose**: User interface, API calls, real-time updates
+#### 1. Frontend (`static/js/`, `static/css/`, `templates/`)
 
-#### 2. **Backend API (FastAPI)**
-- **Location**: `app/api/`, `app/main.py`
-- **Endpoints**:
-  - `POST /api/sign-in` - Start OAuth flow
-  - `POST /api/scan` - Scan emails
-  - `POST /api/delete-emails` - Delete emails
-  - `GET /api/status` - Get operation status
-  - `POST /api/mark-read` - Mark emails as read
+Vanilla JS, server-rendered Jinja templates, no build step. `senderList.js`
+is the shared shell (scan trigger/poll, sender-row render, expand/collapse,
+per-message checkboxes, filter drawer, select-all) that `delete.js`/
+`markread.js`/`archive.js` each configure and extend rather than
+duplicating — see its module doc comment for the shared contract.
+`restore.js` and `routines.js` are self-contained per-tab modules.
+`ui.js` handles cross-cutting UI (tab switching, toasts).
 
-#### 3. **Services Layer**
-- **Location**: `app/services/`
-- **auth.py**: OAuth authentication
-- **gmail/**: Gmail API operations
-  - `scan.py` - Find emails and unsubscribe links
-  - `delete.py` - Delete emails
-  - `mark_read.py` - Mark as read
-  - `unsubscribe.py` - Unsubscribe from senders
+#### 2. Backend API (`app/api/`)
 
-#### 4. **State Management**
-- **Location**: `app/core/state.py`
-- **Purpose**: Track ongoing operations, scan results, user status
-- **Storage**: In-memory (resets on restart)
+| Router | Prefix | Covers |
+|---|---|---|
+| `actions.py` | `/api` | sign-in/out, unsubscribe, scan+bulk delete/archive/mark-read, labels, download, mark-important |
+| `status.py` | `/api` | polling endpoints for every background task above |
+| `auth_gate.py` | `/api` | login gate `login`/`logout` |
+| `restore.py` | `/api` | list/restore operation-log entries |
+| `accounts.py` | `/api/accounts` | list/switch/add accounts |
+| `routines.py` | `/api/routines` | CRUD + preview/run a Routine |
+
+#### 3. Services layer (`app/services/`)
+
+- **`auth.py`** — OAuth flow (see above).
+- **`accounts.py`** — per-account token storage/index.
+- **`operation_log.py`** — the Restore-from-Trash log
+  (`./data/operations.json`): every delete/archive/mark-read/label action
+  appends an entry recording the exact `batchModify` diff applied, scoped
+  by `account_email`; entries auto-prune after 30 days.
+- **`routines.py`** — Routine CRUD (`./data/routines.json`), also
+  account-scoped.
+- **`gmail/helpers.py`** — `build_gmail_query()`, the **single** place
+  every Gmail search query gets built (defaults to `label:INBOX` unless a
+  category filter says otherwise) — see `CLAUDE.md` for why this matters
+  (a pre-fork bug let delete/label actions ignore active filters and
+  operate un-scoped).
+- **`gmail/quota.py`** — rolling 60s usage tracker against Gmail's
+  6,000-units/minute/user cap, proactive gating, retry/backoff on
+  429/quota-shaped errors, and a hard 25-concurrent-request clamp on batch
+  calls (see [Gmail API Operations](#gmail-api-operations--quota-awareness)
+  below — this replaced flat `time.sleep()` calls that used to stand in for
+  real rate limiting).
+- **`gmail/delete.py` / `archive.py` / `mark_read.py`** — per-view scan
+  (`scan_senders_for_*`) + bulk action functions, all accepting an
+  `excluded_message_ids` param so a sender-level bulk action can skip
+  individually-unchecked messages from the per-email preview.
+- **`gmail/labels.py`** — label CRUD + apply/remove-to-senders.
+- **`gmail/important.py`, `unsubscribe.py`, `download.py`** — smaller,
+  single-purpose modules.
+- **`gmail/restore.py`** — reverses one operation-log entry via a swapped
+  `batchModify` call.
+- **`gmail/routines.py`** — `preview_routine()` (sync, count-only) and
+  `run_routine_background()` (combines every selected action into one
+  `batchModify` diff, logs one operation-log entry per run).
+
+#### 4. State (`app/core/state.py`)
+
+In-memory (resets on restart): active scan/bulk-op status dicts polled by
+the frontend, `delete_scan_filters` (the last delete-scan's filters, reused
+by delete/label calls so the frontend doesn't have to resend them),
+`pending_auth_url`. Durable state (tokens, operation log, routines,
+account index) lives in JSON files under the data directory instead, via
+the services listed above — `state.py` is not the source of truth for
+anything that needs to survive a restart.
 
 ---
 
-## Gmail API Operations
+## Gmail API Operations & Quota Awareness
 
-### How Gmail API Works
+### Core call shapes
 
-Gmail API is a **REST API** that uses:
-- **HTTP methods**: GET, POST, DELETE
-- **Authentication**: OAuth 2.0 access tokens
-- **Data format**: JSON
-
-### Key Gmail API Endpoints Used
-
-#### 1. **List Messages**
 ```python
-# Get list of email IDs
-service.users().messages().list(
-    userId="me",
-    maxResults=500,
-    q="from:example@gmail.com"  # Gmail search query
-).execute()
-```
+# List message IDs matching a query (5 units, flat, regardless of page size)
+service.users().messages().list(userId="me", maxResults=500, q=query).execute()
 
-#### 2. **Get Message Details**
-```python
-# Get full email content
-service.users().messages().get(
-    userId="me",
-    id="message_id",
-    format="full"  # or "metadata", "minimal"
-).execute()
-```
+# Get one message's metadata (20 units, flat)
+service.users().messages().get(userId="me", id=msg_id, format="metadata").execute()
 
-#### 3. **Batch Requests** (Super Fast!)
-```python
-# Process 100 emails in one HTTP call
+# Batch many .get() calls into one HTTP request
 batch = service.new_batch_http_request()
 for msg_id in message_ids:
-    batch.add(
-        service.users().messages().get(
-            userId="me",
-            id=msg_id,
-            format="metadata"
-        )
-    )
-batch.execute()  # One HTTP request for 100 emails!
-```
+    batch.add(service.users().messages().get(userId="me", id=msg_id, format="metadata"),
+              request_id=msg_id)
+batch.execute()
 
-#### 4. **Modify Messages**
-```python
-# Delete email (moves to trash)
-service.users().messages().delete(
-    userId="me",
-    id="message_id"
-).execute()
-
-# Mark as read
-service.users().messages().modify(
-    userId="me",
-    id="message_id",
-    body={"removeLabelIds": ["UNREAD"]}
+# Apply a label diff to many messages at once (50 units, flat)
+service.users().messages().batchModify(
+    userId="me", body={"ids": ids, "addLabelIds": [...], "removeLabelIds": [...]}
 ).execute()
 ```
 
-### Example: Scanning Emails
+### Why quota-aware batching exists
 
-```python
-# 1. Get message IDs (fast - just IDs, not full emails)
-result = service.users().messages().list(
-    userId="me",
-    maxResults=500,
-    q="is:unread"  # Gmail search query
-).execute()
+Gmail enforces **two separate limits**, discovered the hard way during this
+fork's Phase 4a2 (full investigation trail in `PROGRESS.md`):
 
-message_ids = [m["id"] for m in result.get("messages", [])]
+1. **6,000 units/minute/user** — the documented cap. `quota.gate()` tracks
+   a rolling 60s window and proactively waits before a call would exceed
+   it, instead of firing and hoping.
+2. **~50 concurrent requests/account** — separate, undocumented in most
+   places, and shared with *any other* concurrent activity on that Gmail
+   account (another device, tab, sync client), not just this app. One
+   batch HTTP request can still bundle many sub-requests, but firing 100 of
+   them at once (the pre-fix behavior) blew straight through this limit and
+   silently dropped rate-limited messages from scan results with no error.
+   `quota.py::MAX_CONCURRENT_BATCH_SIZE = 25` now hard-clamps every batch's
+   sub-request count, with 2 retry passes for anything that still fails
+   transiently. **`run_batched_gets()` processes 25 messages per HTTP call
+   today, not 100** — if you're reading older docs/README wording that
+   still says "100 emails per API call," that's this fix superseding it.
 
-# 2. Get full email details in batches (100 at a time)
-batch = service.new_batch_http_request()
-for msg_id in message_ids[:100]:  # First 100
-    batch.add(
-        service.users().messages().get(
-            userId="me",
-            id=msg_id,
-            format="full"
-        )
-    )
-
-# 3. Process results
-def process_message(request_id, response, exception):
-    if exception:
-        return
-
-    # Extract unsubscribe link from headers
-    headers = response.get("payload", {}).get("headers", [])
-    for header in headers:
-        if header["name"].lower() == "list-unsubscribe":
-            unsubscribe_link = header["value"]
-            # Save to results
-
-batch.execute()  # One HTTP call processes 100 emails!
-```
+`quota.estimate_scan_seconds()` uses the same cost model to show a
+"this scan will take about N minutes" estimate up front, instead of the UI
+silently pacing through invisible waits.
 
 ---
 
-## Code Walkthrough
+## Feature Walkthrough
 
-### 1. Starting the Application
+A few end-to-end traces through the current code, one per major feature —
+not exhaustive, meant as a map for finding the real logic rather than a
+copy you'd expect to compile.
 
-**File**: `main.py`
-```python
-def main():
-    # Check for credentials.json
-    if not os.path.exists("credentials.json"):
-        print("ERROR: credentials.json not found!")
-        return
+### Scan → bulk delete → restore
 
-    # Start FastAPI server
-    uvicorn.run(app, host="0.0.0.0", port=8766)
-```
+1. `POST /api/delete-scan` (`app/api/actions.py`) → background task →
+   `gmail/delete.py::scan_senders_for_delete()`: builds a query via
+   `build_gmail_query()`, lists matching messages, fetches metadata in
+   quota-paced batches, groups by sender, and (since Phase 4c) fetches an
+   exact true per-sender total via `quota.fetch_true_sender_totals()`.
+2. Frontend polls `GET /api/delete-scan-status` /
+   `GET /api/delete-scan-results` (`senderList.js`) and renders sender
+   rows; expanding a row reveals per-message subjects
+   (`message_ids`/`subjects`, 1:1, paginated client-side via "Load more").
+3. `POST /api/delete-emails-bulk` → `delete.py::delete_emails_bulk_background()`:
+   re-queries Gmail fresh for sender + the scan's own filters (not just
+   what was displayed), subtracts any `excluded_message_ids`, and issues
+   `batchModify` adding `TRASH`/removing `INBOX`. On success,
+   `operation_log.append_entry()` records the exact ID/label diff.
+4. `GET /api/restore` / `POST /api/restore/{entry_id}` (`app/api/restore.py`)
+   → `gmail/restore.py::restore_operation()` swaps the logged diff
+   (`removeLabelIds`↔`addLabelIds`) and re-applies it, only deleting the
+   log entry once Gmail confirms success.
 
-**File**: `app/main.py`
-```python
-def create_app():
-    app = FastAPI(title="Gmail Cleaner")
+### Routines
 
-    # Mount static files (CSS, JS)
-    app.mount("/static", StaticFiles(directory="static"))
+`POST /api/routines/{id}/run` → `gmail/routines.py::run_routine_background()`
+combines every selected action (delete/archive/label/mark-read) into a
+*single* `batchModify` diff applied once across all matched messages from
+all the routine's senders — cheaper than running each action as its own
+pass, and produces exactly one operation-log entry (tagged with the
+routine's name as `source`), which is what makes a run undoable via
+Restore with no separate undo mechanism needed.
 
-    # Include API routers
-    app.include_router(status_router)   # GET /api/status
-    app.include_router(actions_router)   # POST /api/*
+### Multi-account switching
 
-    # Serve HTML
-    @app.get("/")
-    async def root(request: Request):
-        return templates.TemplateResponse("index.html", ...)
-
-    return app
-```
-
-### 2. User Clicks "Sign In"
-
-**Frontend** (`static/js/auth.js`):
-```javascript
-async function signIn() {
-    const response = await fetch('/api/sign-in', {
-        method: 'POST'
-    });
-    // Poll for auth status
-    checkAuthStatus();
-}
-```
-
-**Backend** (`app/api/actions.py`):
-```python
-@router.post("/sign-in")
-async def api_sign_in(background_tasks: BackgroundTasks):
-    # Start OAuth in background thread
-    background_tasks.add_task(get_gmail_service)
-    return {"status": "signing_in"}
-```
-
-**Service** (`app/services/auth.py`):
-```python
-def get_gmail_service():
-    # Check for existing token
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", scopes)
-        if creds.valid:
-            return build("gmail", "v1", credentials=creds)
-
-    # No token - start OAuth
-    flow = InstalledAppFlow.from_client_secrets_file(
-        "credentials.json", scopes
-    )
-
-    # This starts a local HTTP server on port 8767
-    # and opens browser to Google login
-    new_creds = flow.run_local_server(
-        port=8767,
-        open_browser=True
-    )
-
-    # Save tokens
-    with open("token.json", "w") as token:
-        token.write(new_creds.to_json())
-
-    return build("gmail", "v1", credentials=new_creds)
-```
-
-### 3. Scanning Emails
-
-**Frontend** (`static/js/scanner.js`):
-```javascript
-async function startScan(limit, filters) {
-    await fetch('/api/scan', {
-        method: 'POST',
-        body: JSON.stringify({ limit, filters })
-    });
-
-    // Poll for results
-    pollScanStatus();
-}
-```
-
-**Backend** (`app/api/actions.py`):
-```python
-@router.post("/scan")
-async def api_scan(request: ScanRequest, background_tasks: BackgroundTasks):
-    # Run scan in background (doesn't block API response)
-    background_tasks.add_task(scan_emails, request.limit, filters)
-    return {"status": "started"}
-```
-
-**Service** (`app/services/gmail/scan.py`):
-```python
-def scan_emails(limit=500, filters=None):
-    # Get authenticated Gmail service
-    service, error = get_gmail_service()
-
-    # Build Gmail search query
-    query = build_gmail_query(filters)  # e.g., "is:unread from:example@gmail.com"
-
-    # Get message IDs (fast - just IDs)
-    result = service.users().messages().list(
-        userId="me",
-        maxResults=limit,
-        q=query
-    ).execute()
-
-    message_ids = [m["id"] for m in result.get("messages", [])]
-
-    # Process in batches of 100
-    batch = service.new_batch_http_request()
-    for msg_id in message_ids:
-        batch.add(
-            service.users().messages().get(
-                userId="me",
-                id=msg_id,
-                format="full"
-            )
-        )
-
-    # Process results
-    def process_message(request_id, response, exception):
-        if exception:
-            return
-
-        # Extract unsubscribe link from email headers
-        headers = response.get("payload", {}).get("headers", [])
-        unsubscribe_link = get_unsubscribe_from_headers(headers)
-
-        # Save to state
-        state.scan_results[sender].append({
-            "link": unsubscribe_link,
-            "count": 1
-        })
-
-    batch.execute()  # One HTTP call for 100 emails!
-
-    # Update status
-    state.scan_status["done"] = True
-```
-
-### 4. Deleting Emails
-
-**Service** (`app/services/gmail/delete.py`):
-```python
-def delete_emails_by_sender(sender):
-    service, error = get_gmail_service()
-
-    # Find all emails from sender
-    result = service.users().messages().list(
-        userId="me",
-        q=f"from:{sender}"
-    ).execute()
-
-    message_ids = [m["id"] for m in result.get("messages", [])]
-
-    # Delete in batches
-    batch = service.new_batch_http_request()
-    for msg_id in message_ids:
-        batch.add(
-            service.users().messages().delete(
-                userId="me",
-                id=msg_id
-            )
-        )
-
-    batch.execute()  # Delete 100 emails in one HTTP call!
-```
+`GET /api/accounts` → `accounts.list_accounts()` (from `accounts.json`'s
+index) → topbar dropdown. `POST /api/accounts/switch` just updates the
+active pointer; nothing else in the app needs to change behavior beyond
+that, since every service function resolves the active account fresh via
+`accounts.get_active_account()` on each call — there's no cached
+per-request "current user" object threaded through.
 
 ---
 
 ## Key Design Decisions
 
-### 1. **Why Background Tasks?**
-- Long-running operations (scanning 1000s of emails) would timeout HTTP requests
-- Background tasks let API return immediately: `{"status": "started"}`
-- Frontend polls `/api/status` for progress
-
-### 2. **Why Batch Requests?**
-- Gmail API allows 100 requests in one HTTP call
-- **10x faster** than individual requests
-- Reduces API quota usage
-
-### 3. **Why State Management?**
-- Operations run in background threads
-- State (`app/core/state.py`) tracks:
-  - Current operation status
-  - Scan results
-  - Progress counters
-- Frontend polls state via `/api/status`
-
-### 4. **Why Two Auth Modes?**
-- **Desktop**: Auto-opens browser (better UX)
-- **Docker/Remote**: Can't auto-open browser, prints URL instead
+1. **Background tasks + polling** — scans/bulk actions can take from
+   seconds to several minutes (see quota pacing above); FastAPI
+   `BackgroundTasks` return `{"status": "started"}` immediately and the
+   frontend polls a `/api/*-status` endpoint rather than holding one HTTP
+   request open.
+2. **Batch requests, quota-clamped** — one HTTP call still processes many
+   messages (25 today, not 100 — see above), which matters far more for
+   latency than for the unit-cost math (`messages.get` costs the same 20
+   units whether batched or not; batching saves HTTP round-trips).
+3. **JSON files, not a database** — operation log, routines, and the
+   account index are all flat JSON under a data directory. No SQL/ORM
+   anywhere; consistent with this being a single-user, locally-run tool
+   where a database would be pure overhead.
+4. **Per-account scoping everywhere** — token storage, the operation log,
+   and Routines are all keyed by account email specifically so switching
+   accounts can never replay an action (e.g. a Restore) against the wrong
+   mailbox.
 
 ---
 
 ## Security Considerations
 
-### 1. **Credentials Storage**
-- `credentials.json` - Contains client secret (gitignored)
-- `token.json` - Contains refresh token (gitignored)
-- Never commit these files!
-
-### 2. **Token Refresh**
-- Access tokens expire after 1 hour
-- Refresh token automatically gets new access token
-- No user interaction needed after first login
-
-### 3. **Scopes (Minimal Permissions)**
-- Only requests `gmail.readonly` and `gmail.modify`
-- No access to other Google services
-- User can revoke access anytime in Google Account settings
+1. **Credentials storage** — `credentials.json` (OAuth client secret) and
+   everything under `tokens/`/`accounts.json` (refresh tokens) are
+   gitignored; never commit them. `CLAUDE.md` requires re-checking
+   `.gitignore` on any PR touching auth.
+2. **Token refresh** — automatic via the refresh token; no user
+   interaction needed after the first sign-in for a given account.
+3. **Scopes** — only `gmail.readonly` + `gmail.modify`; nothing else.
+   Revocable anytime from the user's Google Account settings.
+4. **The login gate is separate from Gmail OAuth** — see
+   [above](#the-login-gate-a-separate-layer). Don't assume one implies the
+   other when reading auth-related code.
 
 ---
 
 ## Summary
 
-1. **OAuth Flow**: User grants permission → Google gives tokens → App uses tokens for API calls
-2. **Architecture**: Frontend (JS) → FastAPI Backend → Gmail API
-3. **Performance**: Batch requests (100 emails per HTTP call)
-4. **State**: In-memory state tracked via background tasks
-5. **Security**: Tokens stored locally, never committed to git
-
-The app is **privacy-focused** because:
-- Each user creates their own OAuth app
-- All processing happens locally
-- No data sent to external servers
-- Open source - you can inspect everything!
+1. **OAuth**: per-account tokens under `tokens/<email>.json`, one active
+   account at a time, switchable without re-consent.
+2. **Login gate**: a separate shared-password layer protecting the UI
+   itself, unrelated to which Gmail account is signed in.
+3. **Architecture**: vanilla-JS frontend → FastAPI → a services layer
+   (Gmail operations, quota pacing, operation log, routines) → Gmail API +
+   local JSON state.
+4. **Quota awareness**: two real Gmail limits (6,000 units/min, ~50
+   concurrent requests/account) are both actively paced/clamped, not just
+   assumed away.
+5. **Privacy**: your own OAuth app, all processing local, nothing sent
+   anywhere but Google's own API.
