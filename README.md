@@ -156,7 +156,7 @@ A walkthrough of how OAuth/multi-account sign-in works here, plus a tour of the 
 
 If you'd rather not deal with Docker or Google Cloud Console yourself, the original project's author, [Gururagavendra](https://github.com/Gururagavendra), has offered hands-on 1-on-1 setup help in the past. See the [upstream repository](https://github.com/Gururagavendra/gmail-cleaner) for details.
 
-Questions about this fork specifically — bugs, feature ideas, anything else? Reach out to Jatin at [jatin.dev.17@gmail.com](mailto:jatin.dev.17@gmail.com).
+Questions about this fork specifically — bugs, feature ideas, anything else? Reach out at [jatin.dev.17@gmail.com](mailto:jatin.dev.17@gmail.com).
 
 ## Prerequisites
 
