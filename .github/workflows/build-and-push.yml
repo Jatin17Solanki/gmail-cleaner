@@ -23,6 +23,10 @@ name: Build and Publish Docker images
 on:
   release:
     types: [created]
+  # Manual trigger for verifying the build/push pipeline works before
+  # committing to a real versioned release. Run via: gh workflow run
+  # build-and-push.yml, or the "Run workflow" button on the Actions tab.
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
