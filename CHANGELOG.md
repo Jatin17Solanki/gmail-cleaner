@@ -404,6 +404,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     already respected exclusions correctly). No new automated test (no JS
     harness - backlog item 3); verified via `node --check` and the fix's
     logic mirrors the same subtraction the backend already performs.
+- Housekeeping pass ahead of the Final (E2E) phase, raised directly by the
+  human, not tied to a numbered PRD phase:
+  - Default scan limit changed from 1000 to 500 (dropdown default in
+    `templates/index.html`'s `sender_view` macro, the three scan request
+    schemas' `Field(default=...)` in `app/models/schemas.py`, and
+    `senderList.js`'s defensive fallback), for a lighter first-scan
+    experience.
+  - Added a favicon (`static/favicon.svg`, an original small SVG mail
+    glyph in the design system's accent color - no external asset), wired
+    into both `templates/index.html` and `templates/login.html`.
+  - The unsubscribe badge's `Auto`/`Open link`/`No unsubscribe link`
+    meanings already had a native hover tooltip (Phase 3) but no visible
+    affordance hinting it existed. Added a persistent `ti-info-circle`
+    icon next to Delete's topbar (the only view with unsubscribe badges),
+    matching the existing quota-explainer icon pattern rather than
+    inventing a new one.
+  - Rewrote `ARCHITECTURE.md`, untouched since the pre-fork upstream
+    commit and describing an app that no longer exists (single-account
+    `token.json`, `scan_emails()`, `/api/scan`/`/api/mark-read`, no login
+    gate/quota tracker/Routines/Restore). Now documents the current
+    multi-account OAuth flow, the login gate as a separate layer, the
+    real services/API layout, and the confirmed 25-message (not 100)
+    concurrent-batch clamp from the Phase 4a2 quota investigation.
+  - README: removed a stale "(copy that folder into this repo root if you
+    don't see it)" note on `wireframes/` (the folder is and always was
+    tracked in git), corrected the "100 emails per API call" claim to 25
+    to match the current quota-clamped batch size, and linked
+    `ARCHITECTURE.md` from the Contributing section.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

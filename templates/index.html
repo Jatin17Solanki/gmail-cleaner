@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Inbox Cleanup</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ cache_bust }}">
 <link rel="stylesheet" href="/static/css/design-system.css?v={{ cache_bust }}">
 <link rel="stylesheet" href="/static/css/app.css?v={{ cache_bust }}">
 <link rel="stylesheet" href="/static/vendor/tabler-icons/tabler-icons.min.css?v={{ cache_bust }}">
@@ -93,8 +94,9 @@
 </div>
 {% endmacro %}
 
-{% macro sender_view(view_id, prefix, title, empty_title, empty_body, show_unread=True) %}
+{% macro sender_view(view_id, prefix, title, empty_title, empty_body, show_unread=True, show_unsubscribe_legend=False) %}
 {% set quota_tooltip = "Gmail limits API access to 6,000 units per minute. Reading one email's details costs 20 units, so scanning 1,000 emails costs about 20,000 units — roughly 3x the per-minute limit. Scans are automatically paced to stay within it, which is why larger ones can take a few minutes instead of failing or missing emails." %}
+{% set unsub_legend_tooltip = "Auto = one-click unsubscribe, no extra confirmation needed. Open link = opens the sender's unsubscribe page, you may need to confirm there. No unsubscribe link = none was found in this sender's emails - use Delete instead." %}
 <div class="view hidden" id="{{ view_id }}View">
   <div class="topbar">
     <button class="btn" id="{{ prefix }}FiltersBtn">
@@ -102,11 +104,14 @@
       <span class="badge badge-accent hidden" id="{{ prefix }}FilterBadge">0</span>
     </button>
     <div class="chip-row" id="{{ prefix }}FilterChips"></div>
+    {% if show_unsubscribe_legend %}
+    <i class="ti ti-info-circle scan-info-icon" title="{{ unsub_legend_tooltip }}" aria-label="What the unsubscribe badges mean"></i>
+    {% endif %}
   </div>
   <div class="scan-bar">
     <select id="{{ prefix }}ScanLimit">
-      <option value="500">Scan 500</option>
-      <option value="1000" selected>Scan 1000</option>
+      <option value="500" selected>Scan 500</option>
+      <option value="1000">Scan 1000</option>
       <option value="2000">Scan 2000</option>
       <option value="5000">Scan 5000</option>
     </select>
@@ -172,7 +177,7 @@
       </div>
     </div>
 
-    {{ sender_view('delete', 'delete', 'Delete', 'Scan to find email senders', "We'll show you who's sending you the most emails, with one-click unsubscribe where available, so you can clean up in bulk.") }}
+    {{ sender_view('delete', 'delete', 'Delete', 'Scan to find email senders', "We'll show you who's sending you the most emails, with one-click unsubscribe where available, so you can clean up in bulk.", show_unsubscribe_legend=True) }}
     {{ sender_view('markread', 'markread', 'Mark as read', 'Scan to find unread senders', "We'll show you who has unread mail waiting so you can mark it read in bulk.") }}
     {{ sender_view('archive', 'archive', 'Archive', 'Scan to find email senders', "We'll show you who's sending you the most emails so you can archive them out of your inbox.") }}
 

@@ -27,7 +27,7 @@ A **free**, privacy-focused tool to bulk unsubscribe from emails, delete emails 
 | **Email Download** | Download email metadata for selected senders as CSV |
 | **Smart Filters** | Filter by date range, email size, category (Promotions, Social, Updates, Forums, Primary), sender, and labels |
 | **Privacy First** | Runs locally - your data never leaves your machine |
-| **Super Fast** | Gmail API with batch requests (100 emails per API call) |
+| **Super Fast** | Gmail API with batch requests (25 emails per API call, paced to stay within Gmail's rate limits) |
 | **Gmail-style UI** | Clean, familiar interface with real-time progress tracking |
 
 > Looking for what's coming next? See [This Fork's Roadmap](#️-this-forks-roadmap) below.
@@ -117,7 +117,7 @@ Expand any sender to see the individual matched emails (not just one sample subj
 
 ### Wireframes
 
-Static, standalone reference mockups for every screen in the redesign live in [`wireframes/`](wireframes/) (copy that folder into this repo root if you don't see it):
+Static, standalone reference mockups for every screen in the redesign live in [`wireframes/`](wireframes/):
 
 - [`delete.html`](wireframes/delete.html) — primary view, inline Label/Important, per-message preview
 - [`mark-as-read.html`](wireframes/mark-as-read.html)
@@ -458,6 +458,10 @@ This error occurs when you try to use an **IP address** in the redirect URI (e.g
 **Remember:** The redirect URI in Google Cloud Console must exactly match what you set in `OAUTH_HOST` + port.
 
 ## Contributing
+
+New to this codebase? [`ARCHITECTURE.md`](ARCHITECTURE.md) walks through how
+OAuth/multi-account sign-in works and tours the current backend/frontend
+structure — read that before diving into the code.
 
 PRs welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) first.
 

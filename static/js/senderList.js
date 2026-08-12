@@ -107,7 +107,7 @@ class SenderListView {
         this.scanning = true;
 
         const limitSelect = this.id('ScanLimit');
-        const limit = limitSelect ? parseInt(limitSelect.value, 10) : 1000;
+        const limit = limitSelect ? parseInt(limitSelect.value, 10) : 500;
 
         const progress = this.id('ScanProgress');
         const progressText = this.id('ScanProgressText');
