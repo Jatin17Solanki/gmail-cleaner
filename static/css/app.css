@@ -92,11 +92,18 @@ body {
   background: none;
 }
 
-/* Credits the upstream project this fork is built on - not a monetization
-   ask for this fork, the link goes straight to the original author's own
-   coffee page. Deliberately quiet (muted color, small text) rather than a
-   prominent CTA, sitting at the bottom of the sidebar via .nav-menu's
-   flex:1 above. */
+/* Two quiet footer links pinned to the bottom of the sidebar via
+   .nav-menu's flex:1 above: crediting the upstream project this fork is
+   built on (not a monetization ask for this fork - goes straight to the
+   original author's own coffee page), and a contact link for this fork's
+   own maintainer. Both deliberately understated (muted color, small text)
+   rather than a prominent CTA. */
+.sidebar-footer-links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .sidebar-support-link {
   display: flex;
   align-items: center;

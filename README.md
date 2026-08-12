@@ -12,19 +12,28 @@ A **free**, privacy-focused tool to clean up a messy Gmail inbox — delete, uns
 
 ## Contents
 
+**Overview**
 - [Features](#features)
 - [Platform Support](#platform-support)
 - [Privacy & Security](#privacy--security)
+
+**See it in action**
 - [Demo](#demo)
 - [Screenshots](#screenshots)
+
+**This fork**
 - [This Fork's Roadmap](#this-forks-roadmap)
 - [Architecture](#architecture)
+
+**Get started**
 - [Need Help Setting Up?](#need-help-setting-up)
 - [Prerequisites](#prerequisites)
 - [Setup](#setup)
 - [Usage](#usage)
 - [Advanced Configuration](#advanced-configuration)
 - [Troubleshooting](#troubleshooting)
+
+**More**
 - [FAQ](#faq)
 - [Feature Requests](#feature-requests)
 - [Contributing](#contributing)
@@ -82,13 +91,15 @@ Works on **all major platforms** - both Docker and local installation:
 
 ## Demo
 
+> This GIF is from before this fork's UI redesign — it shows an older version of the app (a separate "Unsubscribe" tab, no Archive/Routines/Restore). For what it actually looks like today, see [Screenshots](#screenshots) below.
+
 ![Gmail Cleaner Demo](media/demo.gif)
 
 **[Watch Setup Video on YouTube](https://youtu.be/CmOWn8Tm5ZE)** - Step-by-step video on how to setup the repo and run the project locally.
 
 ## Screenshots
 
-A quick tour, roughly in the order you'd actually use it. (Sender names and account details below are redacted or scrubbed to generic notification senders — nothing personal.)
+The current version, as of this fork. A quick tour, roughly in the order you'd actually use it. (Sender names and account details below are redacted or scrubbed to generic notification senders — nothing personal.)
 
 Filter first if you want to — scope a scan by age, category, sender, size, and a few other things before running it.
 
@@ -143,7 +154,9 @@ A walkthrough of how OAuth/multi-account sign-in works here, plus a tour of the 
 
 ## Need Help Setting Up?
 
-If you'd rather not deal with Docker or Google Cloud Console yourself, the original project's author, [Gururagavendra](https://github.com/Gururagavendra), has offered hands-on 1-on-1 setup help in the past. See the [upstream repository](https://github.com/Gururagavendra/gmail-cleaner) for details if that's still available — it's his offer, independent of this fork.
+If you'd rather not deal with Docker or Google Cloud Console yourself, the original project's author, [Gururagavendra](https://github.com/Gururagavendra), has offered hands-on 1-on-1 setup help in the past. See the [upstream repository](https://github.com/Gururagavendra/gmail-cleaner) for details.
+
+Questions about this fork specifically — bugs, feature ideas, anything else? Reach out to Jatin at [jatin.dev.17@gmail.com](mailto:jatin.dev.17@gmail.com).
 
 ## Prerequisites
 
