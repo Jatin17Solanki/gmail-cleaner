@@ -67,6 +67,44 @@ Book a Setup Session Here - mail me at guruvelu85@gmail.com, i will reply and se
 
 **[Watch Setup Video on YouTube](https://youtu.be/CmOWn8Tm5ZE)** - Step-by-step video on how to setup the repo and run the project locally.
 
+## Screenshots
+
+A walkthrough of this fork's UI, in the order you'd actually use it. (Account/sender details in these screenshots are redacted or scrubbed to generic notification senders — nothing personal.)
+
+**1. Narrow the scan down first (optional)** — a filter drawer scopes any scan by age, category, sender, label, size, unread-only, or has-attachment, before you spend any API quota on it.
+
+![Filter drawer](media/screenshots/filter-drawer.png)
+
+**2. Scan, and see who's actually filling your inbox** — senders grouped by volume, with an unsubscribe-status badge (one-click / opens a link / none found) and inline Label/Important actions on every row. Delete, Archive, and Mark as read each get their own version of this same view.
+
+![Delete view with scanned senders](media/screenshots/delete-filtered.png)
+
+**3. Look before you act** — expand any sender to see the real subject lines (not just a sample), uncheck individual messages to exclude them from the action, open one directly in Gmail, or copy its subject. "Load more" reveals additional messages the scan already fetched, at no extra API cost.
+
+![Expanded sender row showing per-email preview](media/screenshots/delete-preview-expanded.png)
+
+**4. Archive and Mark as read work the same way** — their own independent scan and sender list, just a different end action.
+
+<table>
+<tr>
+<td><img src="media/screenshots/archive-filtered.png" alt="Archive view"></td>
+<td><img src="media/screenshots/markread-filtered.png" alt="Mark as read view"></td>
+</tr>
+</table>
+
+**5. Made a mistake? Undo it** — every delete, archive, mark-as-read, or label action taken through the app (not raw Gmail Trash) is logged locally and reversible with one click, kept for 30 days.
+
+![Restore tab showing a reversible recent action](media/screenshots/restore.png)
+
+**6. Automate the cleanup you do on repeat** — save a sender list, an age threshold, and one or more actions as a named Routine. Every run always previews real per-sender match counts first and is itself undoable via Restore.
+
+<table>
+<tr>
+<td><img src="media/screenshots/routines-list.png" alt="Routines list"></td>
+<td><img src="media/screenshots/routines-create.png" alt="New routine form"></td>
+</tr>
+</table>
+
 ## Feature Requests
 
 Lets make this tool a better one by improving as much as possible, All features are welcome, To request a feature, [open a GitHub issue](https://github.com/Gururagavendra/gmail-cleaner/issues/new).
@@ -117,7 +155,7 @@ Expand any sender to see the individual matched emails (not just one sample subj
 
 ### Wireframes
 
-Static, standalone reference mockups for every screen in the redesign live in [`wireframes/`](wireframes/):
+See [Screenshots](#screenshots) above for what the running app actually looks like. The design mockups below are the original pre-build reference used during development (placeholder data, may drift slightly from the shipped UI) — useful mainly for contributors comparing an in-progress change against the intended design. Static, standalone, live in [`wireframes/`](wireframes/):
 
 - [`delete.html`](wireframes/delete.html) — primary view, inline Label/Important, per-message preview
 - [`mark-as-read.html`](wireframes/mark-as-read.html)
