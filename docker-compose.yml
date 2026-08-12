@@ -1,11 +1,21 @@
 services:
   gmail-cleaner:
-    # Option 1: Multi-arch image: works natively on both AMD64 and ARM64 (Apple Silicon)
-    image: ghcr.io/gururagavendra/gmail-cleaner:latest
-    pull_policy: always
+    # Option 1: Build locally (active by default) - this fork doesn't
+    # publish its own prebuilt image yet. Once it does, switch to Option 2
+    # below instead of building from source every time.
+    build: .
 
-    # Option 2: Build locally (uncomment below, comment out image above)
-    # build: .
+    # Option 2: This fork's own published image (once it exists - comment
+    # out "build: ." above and uncomment these two lines instead)
+    # image: ghcr.io/jatin17solanki/gmail-cleaner:latest
+    # pull_policy: always
+
+    # Option 3: Upstream's image - the original project, without this
+    # fork's fixes/features (multi-account, Restore, Routines, quota
+    # awareness, per-email preview, login gate, and more - see the README's
+    # roadmap for the full list)
+    # image: ghcr.io/gururagavendra/gmail-cleaner:latest
+    # pull_policy: always
 
     ports:
       - "127.0.0.1:8766:8766"  # Web UI (bound to localhost only - #111)

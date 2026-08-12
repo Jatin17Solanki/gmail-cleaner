@@ -1,9 +1,6 @@
 # Gmail Bulk Unsubscribe & Cleanup Tool
 
-> Note: Guys i am in job search now, so cant able to address all issues, prs, extremely sorry for all delayed response, please give me an month or maz 2 month to figure out this and come back, thank you for all understanding
-
-A **free**, privacy-focused tool to bulk unsubscribe from emails, delete emails by sender, and mark emails as read. No subscriptions, no data collection - runs 100% on your machine.
-
+A **free**, privacy-focused tool to clean up a messy Gmail inbox — delete, unsubscribe, archive, or mark as read in bulk, by sender. No subscriptions, no data collection, runs 100% on your machine.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square&logo=python)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker)
@@ -13,24 +10,55 @@ A **free**, privacy-focused tool to bulk unsubscribe from emails, delete emails 
 
 > **No Subscription Required - Free Forever**
 
+## Contents
+
+- [Features](#features)
+- [Platform Support](#platform-support)
+- [Privacy & Security](#privacy--security)
+- [Demo](#demo)
+- [Screenshots](#screenshots)
+- [This Fork's Roadmap](#this-forks-roadmap)
+- [Architecture](#architecture)
+- [Need Help Setting Up?](#need-help-setting-up)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Advanced Configuration](#advanced-configuration)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Feature Requests](#feature-requests)
+- [Contributing](#contributing)
+- [Credits](#credits)
+
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Bulk Unsubscribe** | Find newsletters and unsubscribe with one click |
-| **Delete by Sender** | Scan and see who sends you the most emails, delete in bulk |
-| **Bulk Delete Multiple Senders** | Delete emails from multiple senders simultaneously with progress tracking |
-| **Mark as Read** | Bulk mark thousands of unread emails as read |
-| **Archive Emails** | Archive emails from selected senders (remove from inbox) |
-| **Label Management** | Create, delete, and apply/remove labels to emails from specific senders |
-| **Mark Important** | Mark or unmark emails from selected senders as important |
-| **Email Download** | Download email metadata for selected senders as CSV |
-| **Smart Filters** | Filter by date range, email size, category (Promotions, Social, Updates, Forums, Primary), sender, and labels |
-| **Privacy First** | Runs locally - your data never leaves your machine |
-| **Super Fast** | Gmail API with batch requests (25 emails per API call, paced to stay within Gmail's rate limits) |
-| **Gmail-style UI** | Clean, familiar interface with real-time progress tracking |
+**Clean up by sender**
+- **Delete** — scan your inbox, see who's filling it up, delete in bulk
+- **Unsubscribe** — one-click where Gmail can do it automatically, right on the Delete view
+- **Archive** — clear senders out of your inbox without deleting them
+- **Mark as read** — bulk-clear unread mail by sender
+- **Labels** — create, apply, and remove labels from a sender's mail
+- **Mark Important** — mark or unmark a sender's mail as important
+- **Download** — export a sender's email metadata as CSV
 
-> Looking for what's coming next? See [This Fork's Roadmap](#️-this-forks-roadmap) below.
+**Filter and preview before you act**
+- **Smart filters** — age, category, size, sender, label, unread-only, has-attachment
+- **Per-email preview** — expand any sender to see the actual subject lines, not just a sample, and exclude specific messages before a bulk action runs
+
+**Safety net**
+- **Restore** — every delete, archive, mark-as-read, or label action is logged locally and undoable with one click for 30 days — not just whatever's in Gmail's own Trash
+- **Quota-aware** — scans and bulk actions pace themselves to stay under Gmail's API limits, with automatic retry on rate limiting
+
+**Automation**
+- **Routines** — save a sender list, an age threshold, and one or more actions as a named preset; re-run it anytime with one click, always with a preview first
+
+**Accounts & access**
+- **Multi-account** — sign in to more than one Gmail account and switch between them without re-authenticating
+- **Optional login gate** — protect the whole app behind a shared password if it's reachable beyond just your own machine
+
+**Privacy**
+- **100% local** — your data never leaves your machine
+- **Your own credentials** — you control your own Google Cloud OAuth app, not a shared one
 
 ## Platform Support
 
@@ -43,23 +71,14 @@ Works on **all major platforms** - both Docker and local installation:
 | macOS Intel | Native | Native |
 | macOS Apple Silicon (M1/M2/M3/M4) | Native | Native |
 
-## Security & Privacy
+## Privacy & Security
 
 - **100% Local** - No external servers, no data collection
 - **Open Source** - Inspect all the code yourself
 - **Minimal Permissions** - Only requests read + modify (for mark as read)
 - **Your Credentials** - You control your own Google OAuth app
 - **Gitignored Secrets** - `credentials.json` and `token.json` never get committed
-
-## 🆘 Need Help Setting Up?
-A few people reached out to me on Reddit and via email saying they love the idea, but don’t have the technical expertise to run this software themselves. I’d also like to grow the project further, so support would really help make the time I invest in it more worthwhile.<br>Struggling with Docker, Google Cloud Console, or `credentials.json`? I can help you set it up personally!<br>
-I offer a **1-on-1 Setup Service ($8)** where we hop on a Google Meet, you share your screen, and I guide you through the entire installation until it's working perfectly.
-
-- **Secure:** I guide you; I never see your passwords.
-- **Fast:** We'll get it running in under 20 minutes.
-- **Support the Project:** Your $8 helps keep this tool free and open source.
-
-Book a Setup Session Here - mail me at guruvelu85@gmail.com, i will reply and setup an gmeet call
+- **Optional login gate** - a shared password can protect the whole app if it's reachable beyond localhost
 
 ## Demo
 
@@ -69,21 +88,21 @@ Book a Setup Session Here - mail me at guruvelu85@gmail.com, i will reply and se
 
 ## Screenshots
 
-A walkthrough of this fork's UI, in the order you'd actually use it. (Account/sender details in these screenshots are redacted or scrubbed to generic notification senders — nothing personal.)
+A quick tour, roughly in the order you'd actually use it. (Sender names and account details below are redacted or scrubbed to generic notification senders — nothing personal.)
 
-**1. Narrow the scan down first (optional)** — a filter drawer scopes any scan by age, category, sender, label, size, unread-only, or has-attachment, before you spend any API quota on it.
+Filter first if you want to — scope a scan by age, category, sender, size, and a few other things before running it.
 
 ![Filter drawer](media/screenshots/filter-drawer.png)
 
-**2. Scan, and see who's actually filling your inbox** — senders grouped by volume, with an unsubscribe-status badge (one-click / opens a link / none found) and inline Label/Important actions on every row. Delete, Archive, and Mark as read each get their own version of this same view.
+Then scan, and see who's actually filling up your inbox. Senders are grouped together, with an unsubscribe badge and quick Label/Important actions right on each row.
 
 ![Delete view with scanned senders](media/screenshots/delete-filtered.png)
 
-**3. Look before you act** — expand any sender to see the real subject lines (not just a sample), uncheck individual messages to exclude them from the action, open one directly in Gmail, or copy its subject. "Load more" reveals additional messages the scan already fetched, at no extra API cost.
+Before you commit to anything, you can expand a sender and look at what's actually in there — real subject lines, not a guess. Uncheck anything you want to keep, or open a message straight in Gmail.
 
 ![Expanded sender row showing per-email preview](media/screenshots/delete-preview-expanded.png)
 
-**4. Archive and Mark as read work the same way** — their own independent scan and sender list, just a different end action.
+Archive and Mark as read work the same way, just with a different end result.
 
 <table>
 <tr>
@@ -92,11 +111,11 @@ A walkthrough of this fork's UI, in the order you'd actually use it. (Account/se
 </tr>
 </table>
 
-**5. Made a mistake? Undo it** — every delete, archive, mark-as-read, or label action taken through the app (not raw Gmail Trash) is logged locally and reversible with one click, kept for 30 days.
+Made a mistake? Undo it. Anything you do through the app is reversible for 30 days.
 
 ![Restore tab showing a reversible recent action](media/screenshots/restore.png)
 
-**6. Automate the cleanup you do on repeat** — save a sender list, an age threshold, and one or more actions as a named Routine. Every run always previews real per-sender match counts first and is itself undoable via Restore.
+And if you find yourself doing the same cleanup over and over, save it as a Routine and just hit run next time.
 
 <table>
 <tr>
@@ -105,70 +124,26 @@ A walkthrough of this fork's UI, in the order you'd actually use it. (Account/se
 </tr>
 </table>
 
-## Feature Requests
+## This Fork's Roadmap
 
-Lets make this tool a better one by improving as much as possible, All features are welcome, To request a feature, [open a GitHub issue](https://github.com/Gururagavendra/gmail-cleaner/issues/new).
+> This reflects what's changed in **this fork** specifically, on top of the upstream project — not upstream's own roadmap. Full detail on every fix, including the back-and-forth bug-hunting along the way, is in [`CHANGELOG.md`](CHANGELOG.md); the spec behind it is in `PRD.md` at the repo root.
 
-## 🗺️ This Fork's Roadmap
-
-> This section reflects fixes and features planned for **this fork** specifically — not the upstream project's official roadmap. Status is updated as work lands. If you're building on this fork with an AI coding assistant, the full spec behind this roadmap lives in `PRD.md` at the repo root.
-
-### Correctness & safety fixes
-
-| Item | Description | Status |
+| Area | What changed | Status |
 |---|---|---|
-| Delete respects active filters | Deleting emails from a sender currently ignores the date/category filters used to find them — fixed to route through the existing query builder instead of a bare sender query | Done |
-| Inbox-scoped by default | Category filter defaults to "All mail" today, which can pull in archived mail unexpectedly and inflate counts — default changes to Inbox-only | Done |
-| Label operations respect filters | The Label feature has the same filter-ignoring issue as Delete — same fix applied | Done |
-| Login gate | No authentication currently exists on any action endpoint — adds a single shared-password login screen protecting the whole app | Done |
-| Gmail API quota awareness | Scans/bulk actions could silently exceed Gmail's per-user quota with no retry/backoff, causing rate-limited messages to be dropped from results with no warning (non-deterministic sender counts) — adds a rolling usage tracker, proactive blocking with a live wait message, and reactive 429/403 backoff | Done |
+| Correctness & safety | Delete/label actions now respect active filters, Inbox-scoped by default, an optional login gate, and Gmail API quota pacing with retry/backoff | Done |
+| Restore-from-Trash | Every delete/archive/mark-as-read/label action is logged locally and undoable for 30 days | Done |
+| UI/UX redesign | New design system, sidebar navigation, a filter drawer, inline Label/Important actions on every row | Done |
+| Multi-account switcher | Sign in to multiple accounts, switch between them without re-authenticating | Done |
+| Routines | Saved recurring cleanup presets, with a preview before every run | Done |
+| Per-email preview | Expand a sender to see and exclude individual messages before a bulk action | Done |
 
-### Restore-from-Trash
+## Architecture
 
-**Status: Done**
+A walkthrough of how OAuth/multi-account sign-in works here, plus a tour of the current backend and frontend, lives in [`ARCHITECTURE.md`](ARCHITECTURE.md) — worth reading before touching the code.
 
-An app-scoped operation log (not "restore everything in Gmail Trash") — every delete, archive, mark-as-read, or label action taken through the app is logged and individually reversible with one click, with a 30-day retention window on the log itself. Permanent feature, always visible, not a dev-only tool.
+## Need Help Setting Up?
 
-### UI/UX redesign
-
-**Status: Done**
-
-A full visual refresh — warm, minimal design system, sidebar navigation (Delete / Mark as read / Archive / Routines / Restore), a filter drawer replacing the old inline filter row, and Label/Important actions available inline on every screen rather than gated to one tab. Unsubscribe is no longer a separate tab — it's now a per-row badge/toggle on the Delete view, since delete and unsubscribe scans were previously entirely separate systems. Archive and Mark as read each gained their own independent scan (previously Archive only acted on whatever Delete had already scanned, and Mark as read was a blind "mark N most recent" picker with no sender list at all). See **Wireframes** below.
-
-### Multi-account switcher
-
-**Status: Done**
-
-Sign in to multiple Gmail accounts at once and switch between them without repeatedly signing out and back in. One account active at a time (not a merged multi-account view). Restore-from-Trash is scoped per account too, so switching accounts can never replay an undo against the wrong mailbox.
-
-### Routines
-
-**Status: Done**
-
-Save a named preset — a list of senders, a relative age threshold, and one or more actions (delete / label / mark as read / archive) — and re-run it with one click instead of re-entering filters every time. Built for recurring cleanup (e.g. daily newsletters). Always shows a preview of what it'll affect before running, and every run is undoable via Restore-from-Trash.
-
-### Per-email preview
-
-**Status: Done**
-
-Expand any sender to see the individual matched emails (not just one sample subject line, with "Load more" pagination for senders with more than 20), exclude specific messages before acting, open a message directly in Gmail, or copy its subject. Also added a "Select all" checkbox to each sender-row list.
-
-### Wireframes
-
-See [Screenshots](#screenshots) above for what the running app actually looks like. The design mockups below are the original pre-build reference used during development (placeholder data, may drift slightly from the shipped UI) — useful mainly for contributors comparing an in-progress change against the intended design. Static, standalone, live in [`wireframes/`](wireframes/):
-
-- [`delete.html`](wireframes/delete.html) — primary view, inline Label/Important, per-message preview
-- [`mark-as-read.html`](wireframes/mark-as-read.html)
-- [`archive.html`](wireframes/archive.html)
-- [`restore.html`](wireframes/restore.html)
-- [`login.html`](wireframes/login.html)
-- [`routines-list.html`](wireframes/routines-list.html)
-- [`routines-create.html`](wireframes/routines-create.html)
-- [`routines-confirm.html`](wireframes/routines-confirm.html)
-- [`account-switcher.html`](wireframes/account-switcher.html)
-- [`filter-drawer.html`](wireframes/filter-drawer.html)
-
-Open any of these directly in a browser — they're self-contained (shared `design-system.css`, Google Fonts, Tabler icons via CDN) and don't depend on the running app.
+If you'd rather not deal with Docker or Google Cloud Console yourself, the original project's author, [Gururagavendra](https://github.com/Gururagavendra), has offered hands-on 1-on-1 setup help in the past. See the [upstream repository](https://github.com/Gururagavendra/gmail-cleaner) for details if that's still available — it's his offer, independent of this fork.
 
 ## Prerequisites
 
@@ -220,7 +195,7 @@ Open any of these directly in a browser — they're self-contained (shared `desi
 
 1. Clone the repo:
 ```bash
-git clone https://github.com/Gururagavendra/gmail-cleaner.git
+git clone https://github.com/Jatin17Solanki/gmail-cleaner.git
 ```
 
 2. Navigate to the folder:
@@ -230,13 +205,17 @@ cd gmail-cleaner
 
 3. Put your `credentials.json` file in the project folder.
 
+### 3. (Optional) Protect the app with a password
+
+If this instance will be reachable by anyone other than you (e.g. on a home server), set `APP_PASSWORD` to gate the whole app — login page, every action — behind a single shared password. Leave it unset and there's no login screen at all. See `docker-compose.yml`'s commented-out example, or set it as an environment variable for the local Python option.
+
 ## Usage
 
 ### Option A: Docker (Recommended)
 
-1. Pull the latest image and start the container:
+1. Build and start the container (this fork doesn't publish a prebuilt image yet - `docker-compose.yml` builds from source by default; once a `ghcr.io/jatin17solanki/gmail-cleaner` image exists, switch to that instead so you're not rebuilding locally every time - see the comments in `docker-compose.yml`):
 ```bash
-docker compose pull && docker compose up
+docker compose up --build
 ```
 
 2. Open the app in your browser:
@@ -247,10 +226,6 @@ http://localhost:8766
 3. Click **"Sign In"** button in the web UI
 
 4. Check logs for the OAuth URL (only after clicking Sign In!):
-```bash
-docker logs $(docker ps -q --filter ancestor=ghcr.io/gururagavendra/gmail-cleaner)
-```
-Or if you built locally:
 ```bash
 docker logs $(docker ps -q --filter name=gmail-cleaner)
 ```
@@ -277,7 +252,7 @@ The `docker-compose.yml` includes a `data` directory volume mount that automatic
 
 **No manual steps required!**
 
-- ✅ First-time setup: Just run `docker compose up` - the `data` directory is created automatically
+- ✅ First-time setup: Just run `docker compose up --build` - the `data` directory is created automatically
 - ✅ Authentication persists: Your token is saved to `./data/token.json` on the host
 - ✅ Container restarts: Your authentication is automatically loaded from the persisted file
 
@@ -293,7 +268,7 @@ docker compose down
 rm -f ./data/token.json
 
 # Start again (will prompt for new authentication)
-docker compose up
+docker compose up --build
 ```
 
 ### Option B: Python (with uv)
@@ -305,34 +280,6 @@ uv run python main.py
 
 The app opens at http://localhost:8766
 
-
-## FAQ
-
-**Q: Why do I need to create my own Google Cloud project?**  
-> Because this app accesses your Gmail. By using your own OAuth credentials, you have full control and don't need to trust a third party.
-
-**Q: Is this safe?**  
-> Yes! The code is open source - you can inspect it. Your emails are processed locally on your machine.
-
-**Q: Can I use this for multiple Gmail accounts?**  
-> Yes! Click "Sign Out" and sign in with a different account. Each account needs to be added as a test user in your Google Cloud project.
-
-**Q: Emails went to Trash, can I recover them?**  
-> Yes! The delete feature moves emails to Trash. Go to Gmail → Trash to recover within 30 days.
-
-**Q: Can't delete or modify files in the `./data` directory?**  
-> Docker containers run as root by default, so files created in `./data` (like `token.json`) are owned by root. To fix permissions:
-> ```bash
-> sudo chown -R $USER:$USER ./data/
-> ```
-> Or to delete a specific file:
-> ```bash
-> sudo rm ./data/token.json
-> ```
-> This is a common Docker behavior - the files are safe, just owned by root for security reasons.
-
-**Q: Having OAuth authentication issues?**  
-> Check the [Troubleshooting](#troubleshooting) section for common solutions.
 
 ## Advanced Configuration
 
@@ -361,7 +308,7 @@ If you're using **custom port mappings** in Docker (e.g., mapping `18766:8766` a
 3. **Restart the container**:
 
    ```bash
-   docker compose down && docker compose up
+   docker compose down && docker compose up --build
    ```
 
 > **💡 How it works**: The app listens on port 8767 inside the container, but sets the OAuth redirect URI to use port 18767 (the external port). Docker forwards the external port to the internal port.
@@ -452,9 +399,9 @@ If you see `OAuth error: (mismatching_state) CSRF Warning`:
 
 2. **Clear browser cookies** for `accounts.google.com` (or use incognito/private window)
 
-3. **Pull latest image and start fresh:**
+3. **Rebuild and start fresh:**
    ```bash
-   docker compose pull && docker compose up
+   docker compose up --build
    ```
 
 4. Copy the OAuth URL from logs and paste in browser
@@ -495,11 +442,40 @@ This error occurs when you try to use an **IP address** in the redirect URI (e.g
 
 **Remember:** The redirect URI in Google Cloud Console must exactly match what you set in `OAUTH_HOST` + port.
 
+**Can't delete or modify files in the `./data` directory?**
+Docker containers run as root by default, so files created in `./data` (like `token.json`) are owned by root:
+```bash
+sudo chown -R $USER:$USER ./data/
+```
+Or to delete a specific file: `sudo rm ./data/token.json`. This is normal Docker behavior — the files are safe, just root-owned for security reasons.
+
+## FAQ
+
+**Q: Why do I need to create my own Google Cloud project?**
+> Because this app accesses your Gmail. By using your own OAuth credentials, you have full control and don't need to trust a third party.
+
+**Q: Is this safe?**
+> Yes! The code is open source - you can inspect it. Your emails are processed locally on your machine.
+
+**Q: Can I use this for multiple Gmail accounts?**
+> Yes — after signing in, use "Add another account" from the account switcher in the top bar to sign in to more without ever signing out. Switch between them anytime. Each account still needs to be added as a test user in your Google Cloud project.
+
+**Q: Emails went to Trash, can I recover them?**
+> Two ways: the app's own **Restore** tab undoes any delete/archive/mark-as-read/label action taken through it, for 30 days, with one click. Or just go to Gmail → Trash directly — deleting here moves mail there like normal, so it's recoverable there too.
+
+**Q: What's the login screen / `APP_PASSWORD` about?**
+> A separate layer from Gmail sign-in — an optional shared password that gates the whole app, useful if it's reachable by more than just you. Set the `APP_PASSWORD` environment variable to turn it on; leave it unset and there's no login screen at all.
+
+**Q: Having OAuth authentication issues?**
+> Check the [Troubleshooting](#troubleshooting) section for common solutions.
+
+## Feature Requests
+
+Lets make this tool a better one by improving as much as possible, All features are welcome, To request a feature, [open a GitHub issue](https://github.com/Gururagavendra/gmail-cleaner/issues/new).
+
 ## Contributing
 
-New to this codebase? [`ARCHITECTURE.md`](ARCHITECTURE.md) walks through how
-OAuth/multi-account sign-in works and tours the current backend/frontend
-structure — read that before diving into the code.
+New to this codebase? Read [Architecture](#architecture) above before diving in. The original pre-build design mockups (placeholder data, may drift slightly from what's shipped) are in [`wireframes/`](wireframes/) if you're comparing an in-progress UI change against the intended design.
 
 PRs welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) first.
 
@@ -508,12 +484,9 @@ PRs welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) first.
 - Improve the UI
 - Add new functionality
 
+## Credits
 
-## 🙏 Credit
-
-This project is a fork of **[Gururagavendra/gmail-cleaner](https://github.com/Gururagavendra/gmail-cleaner)**, created and maintained by **[Gururagavendra](https://github.com/Gururagavendra)**. The OAuth flow, Gmail API integration, scanning and categorization engine, and the original UI are their work — none of what's described in this README's roadmap would exist without that foundation. This fork adds bug fixes and new features on top of it (see [This Fork's Roadmap](#️-this-forks-roadmap) above).
-
-If you're looking for the original, actively-maintained project rather than this personal fork, go to **[github.com/Gururagavendra/gmail-cleaner](https://github.com/Gururagavendra/gmail-cleaner)** — and if any of this fork's fixes end up generally useful, the intent is to contribute them back upstream via PR.
+This is a fork of [Gururagavendra/gmail-cleaner](https://github.com/Gururagavendra/gmail-cleaner), created and maintained by [Gururagavendra](https://github.com/Gururagavendra). The OAuth flow, Gmail API integration, and original UI are their work — this fork builds on top of that foundation (see [This Fork's Roadmap](#this-forks-roadmap) above for what's changed). If you're looking for the original, actively-maintained project rather than this personal fork, that's where to go.
 
 <p align="center">
   Made to help you escape email hell | have a nice day
