@@ -30,6 +30,12 @@ window.GmailCleaner = window.GmailCleaner || {};
 // in the DOM at once.
 const MESSAGE_PAGE_SIZE = 20;
 
+// Shown once per page load (not once per tab) the first time any eye icon
+// is clicked, across Delete/Archive/Mark-as-read alike - a reminder, not a
+// blocking check, since a not-signed-in click just lands on Gmail's own
+// account picker rather than failing silently.
+let hasShownGmailSignInHint = false;
+
 GmailCleaner.SenderList = {
     views: {},
 
@@ -217,14 +223,25 @@ class SenderListView {
         this._updateSelectionBar();
     }
 
+    // Sets a sender row's own checkbox and cascades to its (possibly not
+    // yet built) message checkboxes - the one place that does both, so
+    // select-all (which sets .row-select-cb.checked programmatically, which
+    // never fires 'change') and a direct click on the row checkbox (which
+    // does) stay consistent with each other.
+    _setRowSelected(row, checked) {
+        const cb = row.querySelector('.row-select-cb');
+        if (cb) cb.checked = checked;
+        this._syncMessageCheckboxes(row, checked);
+    }
+
     // "Select all" toggles every sender's row checkbox at once - e.g.
     // "delete everything except a few senders" otherwise means checking
     // dozens of boxes individually (PROGRESS.md backlog item 9).
     _bindSelectAll() {
         this.id('SelectAllCb')?.addEventListener('change', (e) => {
             const checked = e.target.checked;
-            this.id('Rows').querySelectorAll('.row-select-cb').forEach(cb => {
-                cb.checked = checked;
+            this.id('Rows').querySelectorAll('.sender-row').forEach(row => {
+                this._setRowSelected(row, checked);
             });
             this._updateSelectionBar();
         });
@@ -248,9 +265,18 @@ class SenderListView {
         row.className = 'row sender-row';
         row.dataset.email = sender.email;
 
+        // total_count (Gmail's own resultSizeEstimate for sender+filters) is
+        // the real number an action will affect - count is only how many
+        // fell within the scanned window, which can badly understate it for
+        // a sender with more mail than the scan looked through. Never show
+        // a total below what the scan already confirmed exists.
+        const total = Math.max(sender.total_count ?? sender.count, sender.count);
+        const countLabel = total > sender.count
+            ? `${sender.count} shown of ${total} total emails`
+            : `${total} emails`;
         const subtitle = this.showSubjectPreview && sender.subjects && sender.subjects[0]
-            ? `${sender.count} emails · ${esc(sender.subjects[0])}`
-            : `${sender.count} emails`;
+            ? `${countLabel} · ${esc(sender.subjects[0])}`
+            : countLabel;
 
         let unsubHtml = '';
         if (this.showUnsubscribe) {
@@ -285,7 +311,13 @@ class SenderListView {
             <div class="sender-row-detail hidden"></div>
         `;
 
-        row.querySelector('.row-select-cb')?.addEventListener('change', () => this._updateSelectionBar());
+        row.querySelector('.row-select-cb')?.addEventListener('change', (e) => {
+            this._syncMessageCheckboxes(row, e.target.checked);
+            this._updateSelectionBar();
+        });
+        // Note: this listener already handles the direct-click case;
+        // _setRowSelected (used by select-all) covers the programmatic case,
+        // since setting .checked directly doesn't fire 'change'.
         row.querySelector('.unsub-cb')?.addEventListener('change', () => this._updateSelectionBar());
         row.querySelector('[data-action="toggle-expand"]')?.addEventListener('click', () => this._toggleExpand(row, sender));
         row.querySelector('[data-action="label"]')?.addEventListener('click', () => this._openLabelPicker(row, sender));
@@ -314,11 +346,19 @@ class SenderListView {
 
         if (!detail.dataset.built) {
             detail.dataset.built = '1';
-            detail.appendChild(this._buildMessageRows(sender));
+            detail.appendChild(this._buildMessageRows(sender, row));
         }
     }
 
-    _buildMessageRows(sender) {
+    // Message checkboxes must obey the parent sender-row checkbox, not just
+    // start checked regardless of it - a deselected sender shouldn't show
+    // its messages as "included" when expanded, and toggling the parent
+    // afterward must propagate to any already-built children too.
+    _syncMessageCheckboxes(row, checked) {
+        row.querySelectorAll('.message-cb').forEach(cb => { cb.checked = checked; });
+    }
+
+    _buildMessageRows(sender, row) {
         const wrap = document.createElement('div');
         wrap.innerHTML = '<div class="divider"></div>';
 
@@ -333,9 +373,9 @@ class SenderListView {
         loadMoreBtn.type = 'button';
         loadMoreBtn.className = 'message-row-load-more';
         rowsContainer.appendChild(loadMoreBtn);
-        loadMoreBtn.addEventListener('click', () => this._revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn));
+        loadMoreBtn.addEventListener('click', () => this._revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn, row));
 
-        this._revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn);
+        this._revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn, row);
 
         return wrap;
     }
@@ -345,12 +385,19 @@ class SenderListView {
     // count (minus the "Load more" button itself) - no separate counter to
     // keep in sync. All data is already in `subjects`/`messageIds` (the
     // scan fetched every matched message, see module comment) so this never
-    // makes a network call.
-    _revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn) {
+    // makes a network call. Newly-revealed rows are initialized to the
+    // parent sender-row's *current* checkbox state, read fresh each call -
+    // covers both the first reveal and a later "Load more" after the
+    // parent's been toggled since expand.
+    _revealMoreMessages(rowsContainer, subjects, messageIds, loadMoreBtn, row) {
+        const parentChecked = row.querySelector('.row-select-cb')?.checked ?? true;
         const shown = rowsContainer.children.length - 1;
         const next = Math.min(shown + MESSAGE_PAGE_SIZE, subjects.length);
         for (let i = shown; i < next; i++) {
-            rowsContainer.insertBefore(this._buildMessageRow(subjects[i], messageIds[i]), loadMoreBtn);
+            rowsContainer.insertBefore(
+                this._buildMessageRow(subjects[i], messageIds[i], parentChecked),
+                loadMoreBtn
+            );
         }
         const remaining = subjects.length - next;
         if (remaining > 0) {
@@ -361,14 +408,14 @@ class SenderListView {
         }
     }
 
-    _buildMessageRow(subject, messageId) {
+    _buildMessageRow(subject, messageId, checked = true) {
         const row = document.createElement('div');
         row.className = 'message-row';
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.className = 'message-cb';
-        checkbox.checked = true;
+        checkbox.checked = checked;
         checkbox.dataset.messageId = messageId;
         checkbox.title = 'Uncheck to exclude this message from the next bulk action on this sender';
 
@@ -382,7 +429,7 @@ class SenderListView {
         const eyeIcon = document.createElement('i');
         eyeIcon.className = 'ti ti-eye';
         eyeIcon.dataset.action = 'preview';
-        eyeIcon.title = 'Open in Gmail';
+        eyeIcon.title = 'Open in Gmail (requires being signed into this account in your browser)';
         eyeIcon.addEventListener('click', () => this._openInGmail(messageId));
 
         const copyIcon = document.createElement('i');
@@ -406,6 +453,12 @@ class SenderListView {
     _openInGmail(messageId) {
         if (!messageId) return;
         const email = GmailCleaner.Auth?.currentEmail || '';
+        if (!hasShownGmailSignInHint) {
+            hasShownGmailSignInHint = true;
+            GmailCleaner.UI.showInfoToast(
+                email ? `Opening in Gmail — sign in as ${email} there if prompted.` : 'Opening in Gmail — sign in there if prompted.'
+            );
+        }
         const url = `https://mail.google.com/mail/?authuser=${encodeURIComponent(email)}#all/${encodeURIComponent(messageId)}`;
         window.open(url, '_blank', 'noopener');
     }
@@ -516,11 +569,15 @@ class SenderListView {
             }));
     }
 
+    // Sums real totals (total_count), not the scanned sample (count) - a
+    // bulk action affects every message matching sender+filters, not just
+    // whatever fell within the scan's own window, so the selection summary
+    // and confirm dialogs must reflect that real number, not understate it.
     getSelectedCount() {
         const emails = this.getSelectedSenderEmails();
         return this.results
             .filter(r => emails.includes(r.email))
-            .reduce((sum, r) => sum + r.count, 0);
+            .reduce((sum, r) => sum + Math.max(r.total_count ?? r.count, r.count), 0);
     }
 
     removeSendersFromResults(emails) {

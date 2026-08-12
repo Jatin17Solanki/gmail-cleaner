@@ -308,6 +308,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     files were syntax-checked with `node --check` and are pending the
     human's manual browser-driven verification pass, same precedent as
     every prior frontend-touching phase.
+  - **Round 2, from the human's own review of this PR before merge** (fixed
+    in the same branch, same precedent as every prior phase's mid-review
+    bugfix rounds): reviewing the delete/archive/mark-read/label action
+    functions surfaced that they were never actually bounded by a scan's
+    `limit` in the first place - they independently re-query Gmail by
+    sender + filters and paginate to exhaustion (this predates Phase 4c
+    entirely, going back to the #107 fix in Phase 1). That means the
+    per-sender `count` shown in a scanned row was always just a sample of
+    the scan's own window, not the true number an action would affect -
+    and Phase 4c's new "select all" made that gap far more consequential,
+    since it multiplies the same understatement across every sender shown
+    at once. Fixed as part of this same PR, not deferred:
+    - New `quota.fetch_true_sender_totals()`: one extra `messages.list()`
+      call per unique sender after a scan groups results (5 units flat,
+      `resultSizeEstimate` only - no per-message `get()` needed), wired
+      into all three scan functions. A per-sender failure falls back to
+      that sender's sampled count rather than aborting the scan. New
+      `total_count` field on each sender in scan results.
+    - Sender rows now show "X shown of Y total emails" whenever the true
+      total exceeds the sampled count, instead of just the sample.
+      `getSelectedCount()` (which drives both the selection-bar summary and
+      Delete's confirm dialog) now sums real totals, not sampled counts -
+      "12 emails selected" no longer silently means "up to several hundred
+      once you click Delete." Delete's confirm dialog text now states
+      explicitly that the action covers all of a sender's mail matching
+      the active filters, not just what's shown.
+    - New always-visible explainer note ("Acting on a sender affects all of
+      their mail matching your active filters — not just the count shown
+      below"), directly under the scan controls on Delete/Archive/
+      Mark-as-read - deliberately plain text, not another icon+tooltip
+      (mirrors the Restore screen's existing "Showing actions from the last
+      30 days" pattern), since a hover-only affordance is exactly the kind
+      of thing this needed to not be missable.
+    - Separately found while implementing the above: per-message checkboxes
+      in an expanded sender row always rendered checked regardless of the
+      parent sender-row checkbox's actual state, and toggling the parent
+      afterward never propagated to already-built children - fixed so
+      children inherit the parent's current state when built/revealed and
+      follow it when the parent is toggled (including through "select
+      all", which sets checkboxes programmatically and so needed its own
+      explicit propagation call rather than relying on a `change` event).
+    - Eye-icon tooltip now states the sign-in requirement explicitly, plus
+      a one-time-per-page-load info toast on first use reminding which
+      account to be signed into - lighter-weight than the above since a
+      not-signed-in click lands on Gmail's own account picker rather than
+      failing silently.
+    - New tests: `TestFetchTrueSenderTotals` in `test_quota.py`, and a
+      `total_count`-in-results integration test per scan function in
+      `test_delete.py`/`test_archive.py`/`test_mark_read.py` (the latter
+      also confirming the true-count query stays scoped to `is:unread`,
+      matching the scan itself). 442/442 tests passing (up from 434).
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases

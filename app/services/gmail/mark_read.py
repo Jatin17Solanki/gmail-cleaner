@@ -171,6 +171,18 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
             reverse=True,
         )
 
+        state.markread_scan_status["message"] = "Fetching total counts..."
+        # Reuses query_filters (already carries unread_only=True) so the
+        # true count stays scoped to unread mail, same as the scan itself -
+        # not every message ever received from this sender.
+        quota.fetch_true_sender_totals(
+            service,
+            sorted_senders,
+            query_filters,
+            state.markread_scan_status,
+            label="messages.list (markread total count)",
+        )
+
         state.markread_scan_results = sorted_senders
         state.markread_scan_status["message"] = f"Found {len(sorted_senders)} senders"
         state.markread_scan_status["done"] = True

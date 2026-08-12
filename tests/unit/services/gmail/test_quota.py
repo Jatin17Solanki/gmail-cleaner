@@ -18,6 +18,7 @@ from app.services.gmail.quota import (
     MAX_CONCURRENT_BATCH_SIZE,
     QuotaTracker,
     estimate_scan_seconds,
+    fetch_true_sender_totals,
 )
 
 
@@ -475,3 +476,67 @@ class TestEstimateScanSeconds:
         # 300 messages * 20 = 6000 units exactly (ignoring list() cost),
         # comfortably under with the small list() addition too.
         assert estimate_scan_seconds(299) == 0
+
+
+class TestFetchTrueSenderTotals:
+    """A scan's own `count` only reflects how many of a sender's messages
+    fell within the scanned window - fetch_true_sender_totals fills in the
+    real total (Gmail's own resultSizeEstimate) so the UI isn't showing a
+    number that understates what an action would actually affect."""
+
+    def _service(self, result_size_estimates):
+        """MagicMock Gmail service whose messages().list().execute() returns
+        result_size_estimates[call_index] in call order."""
+        service = MagicMock()
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {"resultSizeEstimate": n} for n in result_size_estimates
+        ]
+        return service
+
+    def test_fills_in_total_count_per_sender(self):
+        senders = [
+            {"email": "a@example.com", "count": 3},
+            {"email": "b@example.com", "count": 1},
+        ]
+        service = self._service([142, 7])
+
+        fetch_true_sender_totals(service, senders, None, {})
+
+        assert senders[0]["total_count"] == 142
+        assert senders[1]["total_count"] == 7
+
+    def test_queries_each_sender_scoped_to_filters(self):
+        senders = [{"email": "a@example.com", "count": 3}]
+        service = self._service([142])
+
+        fetch_true_sender_totals(service, senders, {"older_than": "30d"}, {})
+
+        list_call = service.users.return_value.messages.return_value.list
+        query = list_call.call_args.kwargs["q"]
+        assert "from:a@example.com" in query
+        assert "older_than:30d" in query
+
+    def test_missing_result_size_estimate_falls_back_to_sampled_count(self):
+        senders = [{"email": "a@example.com", "count": 3}]
+        service = MagicMock()
+        service.users.return_value.messages.return_value.list.return_value.execute.return_value = {}
+
+        fetch_true_sender_totals(service, senders, None, {})
+
+        assert senders[0]["total_count"] == 3
+
+    def test_per_sender_failure_falls_back_without_aborting_the_rest(self):
+        senders = [
+            {"email": "a@example.com", "count": 3},
+            {"email": "b@example.com", "count": 5},
+        ]
+        service = MagicMock()
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            Exception("transient error"),
+            {"resultSizeEstimate": 99},
+        ]
+
+        fetch_true_sender_totals(service, senders, None, {})
+
+        assert senders[0]["total_count"] == 3
+        assert senders[1]["total_count"] == 99

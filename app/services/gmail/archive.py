@@ -165,6 +165,15 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
             reverse=True,
         )
 
+        state.archive_scan_status["message"] = "Fetching total counts..."
+        quota.fetch_true_sender_totals(
+            service,
+            sorted_senders,
+            filters,
+            state.archive_scan_status,
+            label="messages.list (archive total count)",
+        )
+
         state.archive_scan_results = sorted_senders
         state.archive_scan_status["message"] = f"Found {len(sorted_senders)} senders"
         state.archive_scan_status["done"] = True

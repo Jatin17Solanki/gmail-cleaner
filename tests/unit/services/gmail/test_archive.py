@@ -178,6 +178,29 @@ class TestArchiveEmailsExclusion:
         assert operation_log.list_entries() == []
 
 
+class TestScanSendersForArchiveTrueTotals:
+    """Phase 4c follow-up: a sender's `count` only reflects the scanned
+    window - the scan also fetches the real total (Gmail's own
+    resultSizeEstimate) so the UI isn't showing a number that understates
+    what an archive would actually affect."""
+
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_scan_result_includes_total_count(self, mock_get_service):
+        response = _message_response("promo@example.com", "Sale")
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {"messages": [{"id": "m1"}]},
+            {"resultSizeEstimate": 87},
+        ]
+
+        scan_senders_for_archive(limit=10)
+
+        sender = state.archive_scan_results[0]
+        assert sender["count"] == 1
+        assert sender["total_count"] == 87
+
+
 class TestScanSendersForArchive:
     """Phase 3: Archive gets its own scan, mirroring scan_senders_for_delete
     (sender/count/subjects/dates/message_ids), independent of Delete's

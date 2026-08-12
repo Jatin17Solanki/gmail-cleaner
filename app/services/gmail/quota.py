@@ -429,3 +429,44 @@ def run_batched_gets(
         max_retry_passes,
         label,
     )
+
+
+def fetch_true_sender_totals(
+    service,
+    senders: list[dict],
+    filters: Optional[dict],
+    status_dict: Optional[dict] = None,
+    label: str = "messages.list (true total)",
+) -> None:
+    """Fill in `total_count` on each sender dict, in place, with Gmail's own
+    resultSizeEstimate for that sender + the active filters.
+
+    A scan's own `count` field only reflects how many of a sender's messages
+    fell within the scanned window (limited by the scan's own `limit`/
+    pagination) - it can badly undercount a sender's true mail volume, which
+    is misleading right where a user decides whether to delete/archive/mark
+    a sender. One extra messages.list() call per sender (5 units, no
+    per-message get() needed - just the count) gets the real number.
+
+    A per-sender failure falls back to that sender's already-known sampled
+    count rather than aborting the scan - the UI still works, just without
+    the corrected number for that one sender.
+    """
+    from app.services.gmail.helpers import build_gmail_query
+
+    for sender_data in senders:
+        try:
+            query_filters = dict(filters or {})
+            query_filters["sender"] = sender_data["email"]
+            query = build_gmail_query(query_filters)
+            result = execute_with_backoff(
+                service.users().messages().list(userId="me", q=query, maxResults=1),
+                COST["messages.list"],
+                status_dict,
+                label=label,
+            )
+            sender_data["total_count"] = result.get(
+                "resultSizeEstimate", sender_data["count"]
+            )
+        except Exception:
+            sender_data["total_count"] = sender_data["count"]

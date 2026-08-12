@@ -320,6 +320,31 @@ class TestScanSendersForDeleteSubjectsUncapped:
             assert msg_id == f"msg-{subject}"
 
 
+class TestScanSendersForDeleteTrueTotals:
+    """Phase 4c follow-up: a sender's `count` only reflects the scanned
+    window - the scan also fetches the real total (Gmail's own
+    resultSizeEstimate) so the UI isn't showing a number that understates
+    what a delete would actually affect."""
+
+    @patch("app.services.gmail.delete.get_gmail_service")
+    def test_scan_result_includes_total_count(self, mock_get_service):
+        response = _message_response("newsletter@example.com", "Hello")
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+        # First call: the scan's own message-listing pagination (one
+        # message). Second call: the true-count pass for that one sender.
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {"messages": [{"id": "m1"}]},
+            {"resultSizeEstimate": 312},
+        ]
+
+        scan_senders_for_delete(limit=10)
+
+        sender = state.delete_scan_results[0]
+        assert sender["count"] == 1
+        assert sender["total_count"] == 312
+
+
 class TestDeleteEmailsWritesOperationLog:
     """Phase 2: a successful delete should be restorable via the operation log."""
 

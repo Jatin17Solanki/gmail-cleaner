@@ -244,6 +244,18 @@ body {
   color: var(--text-secondary);
 }
 
+/* Phase 4c: always-visible, no-click explainer that a sender-level action
+   isn't bounded by the scan's own limit/sample - same plain-text-note
+   pattern as .restore-note, deliberately not another icon+tooltip, since
+   this is exactly the kind of thing a hover-only affordance gets missed. */
+.scope-note {
+  padding: 8px 18px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
 /* Phase 4a2: quota-aware scans can take a few minutes for a large limit -
    this tells the user roughly how long and when to check back, instead of
    leaving them watching a spinner with no sense of when it'll finish. */
