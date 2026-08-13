@@ -17,6 +17,7 @@ import threading
 import uvicorn
 
 from app.core import settings
+from app.core.config import migrate_legacy_data_layout
 from app.main import app
 
 
@@ -24,6 +25,8 @@ def main():
     print("=" * 60)
     print(f"{settings.app_name}")
     print("=" * 60)
+
+    migrate_legacy_data_layout()
 
     # Check for credentials (file or environment variable)
     has_creds = os.path.exists(settings.credentials_file) or os.environ.get(

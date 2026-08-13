@@ -550,6 +550,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Local and Docker runs no longer read/write two different data
+  directories.** Found while explaining the Docker publishing work: Docker
+  used to auto-detect `/app/data` at startup and redirect `token_file`
+  there (a fragile, undocumented `Settings.__init__` side effect dating to
+  upstream), while a local `uv run python main.py` run kept the bare
+  `token.json` default - so `accounts.json`/`auth.json`/`operations.json`/
+  `routines.json`/`token_file` (every one of them keyed off `token_file`'s
+  directory) silently diverged into two unrelated stores depending on which
+  way you happened to run the app. `app/core/config.py`'s
+  `DEFAULT_TOKEN_FILE` is now the plain relative `data/token.json` -
+  Docker's `WORKDIR /app` (Dockerfile) already resolves that to
+  `/app/data/token.json`, exactly what `docker-compose.yml`'s bind mount
+  covers, with no detection logic needed. Removed the old `/app/data`
+  auto-detection entirely (including its absolute-path traversal
+  hardening, now moot since there's no absolute-path branch to guard).
+  New `migrate_legacy_data_layout()`, called once from `main.py`'s real
+  entrypoint (not at import time, so it can't run as a side effect of
+  `pytest` collection): moves any pre-unification local files it finds at
+  the old bare location into `data/`, but deliberately never overwrites an
+  existing file at the new location - real accounts could have diverged
+  data at both locations from before this fix, and guessing which copy
+  should win is worse than leaving both in place with a logged warning.
+  New `tests/unit/core/test_config.py`. 453/453 tests passing (up from
+  444).
 - **Two UI polish issues found during the human's manual review of the
   Phase 4b (Routines) PR.** (1) The "New routine" form card was left-
   aligned instead of centered - `#routinesFormSection` (a flex column,

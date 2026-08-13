@@ -4,9 +4,27 @@ Application Configuration
 Central configuration and settings for the application.
 """
 
+import logging
 import os
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+# Docker's WORKDIR is /app (see Dockerfile), so this relative default
+# resolves to /app/data/token.json inside a container - exactly the path
+# docker-compose.yml's data/ bind mount already covers, with no runtime
+# detection needed. Locally, it resolves under the cwd, so data/token.json
+# sits in a data/ subfolder next to credentials.json at the repo root. Both
+# modes land on the same relative layout automatically.
+DEFAULT_TOKEN_FILE = "data/token.json"
+
+# Pre-unification local (non-Docker) installs may have accumulated data
+# files at this bare, repo-root-relative location instead of under data/ -
+# Docker installs never had this problem, since the old /app/data
+# auto-detection already put their files exactly where DEFAULT_TOKEN_FILE
+# now points too. See migrate_legacy_data_layout() below.
+LEGACY_TOKEN_FILE = "token.json"
 
 
 class Settings(BaseSettings):
@@ -69,54 +87,7 @@ class Settings(BaseSettings):
         return bool(v)
 
     credentials_file: str = "credentials.json"
-    token_file: str = "token.json"
-
-    def __init__(self, **kwargs):
-        """Initialize settings and auto-detect data directory for token persistence."""
-        super().__init__(**kwargs)
-        # Auto-detect /app/data directory in Docker and use it for token_file
-        # This allows token.json to persist across container restarts
-        if os.path.exists("/app/data") and os.path.isdir("/app/data"):
-            # Normalize the base directory path
-            base_dir = os.path.abspath(os.path.realpath("/app/data"))
-
-            if os.path.isabs(self.token_file):
-                # If token_file is absolute, verify it's within /app/data
-                resolved_path = os.path.abspath(os.path.realpath(self.token_file))
-                # Unsafe conditions: path traversal, points to base_dir, or is a directory
-                if (
-                    not resolved_path.startswith(base_dir + os.sep)
-                    or resolved_path == base_dir
-                    or os.path.isdir(resolved_path)
-                ):
-                    # Absolute path unsafe - use safe fallback
-                    name = os.path.basename(self.token_file)
-                    if name in ("", "."):
-                        name = "token.json"
-                    self.token_file = os.path.join(base_dir, name)
-                else:
-                    # Valid absolute path within /app/data (file, not directory)
-                    self.token_file = resolved_path
-            else:
-                # Relative path - join and validate
-                candidate_path = os.path.join(base_dir, self.token_file)
-                resolved_path = os.path.abspath(os.path.realpath(candidate_path))
-
-                # Verify resolved path is within base_dir and is a file (prevents path traversal)
-                # Unsafe conditions: path traversal, points to base_dir, or is a directory
-                if (
-                    not resolved_path.startswith(base_dir + os.sep)
-                    or resolved_path == base_dir
-                    or os.path.isdir(resolved_path)
-                ):
-                    # Path traversal detected or directory path - use safe fallback with basename only
-                    name = os.path.basename(self.token_file)
-                    if name in ("", "."):
-                        name = "token.json"
-                    self.token_file = os.path.join(base_dir, name)
-                else:
-                    # Safe path - use resolved path (file, not directory)
-                    self.token_file = resolved_path
+    token_file: str = DEFAULT_TOKEN_FILE
 
     # Gmail API
     scopes: list[str] = [
@@ -133,3 +104,72 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+_LEGACY_DATA_FILENAMES = (
+    "token.json",
+    "accounts.json",
+    "operations.json",
+    "auth.json",
+    "routines.json",
+)
+
+
+def migrate_legacy_data_layout() -> None:
+    """One-time move of pre-unification local data files into data/.
+
+    No-op for Docker installs (their files were already under data/ via the
+    old /app/data auto-detection this replaced) and for any install that's
+    already been migrated or never had legacy files to begin with. Not
+    called automatically at import time - filesystem-mutating side effects
+    at import would run during test collection too, which is unsafe when a
+    developer's actual working directory has real legacy files. Call once
+    from the real app entrypoint (main.py) instead.
+
+    Deliberately conservative: never overwrites an existing file at the new
+    location, since accounts.py/operation_log.py/security.py/routines.py
+    all key off token_file's directory together - a real install could have
+    diverged data at both locations (e.g. local-Python and Docker runs
+    signed into different accounts before this unification existed). Logs a
+    warning instead of guessing which copy should win.
+    """
+    legacy_dir = os.path.dirname(os.path.abspath(LEGACY_TOKEN_FILE)) or "."
+    new_dir = os.path.dirname(os.path.abspath(settings.token_file))
+    if legacy_dir == new_dir:
+        return
+
+    for name in _LEGACY_DATA_FILENAMES:
+        old_path = os.path.join(legacy_dir, name)
+        new_path = os.path.join(new_dir, name)
+        if not os.path.exists(old_path):
+            continue
+        if os.path.exists(new_path):
+            logger.warning(
+                "Found legacy data file %s but %s already exists - leaving "
+                "both in place. Reconcile manually if the legacy copy is "
+                "the one you want.",
+                old_path,
+                new_path,
+            )
+            continue
+        os.makedirs(new_dir, exist_ok=True)
+        os.replace(old_path, new_path)
+        logger.info("Migrated legacy data file %s -> %s", old_path, new_path)
+
+    old_tokens_dir = os.path.join(legacy_dir, "tokens")
+    new_tokens_dir = os.path.join(new_dir, "tokens")
+    if os.path.isdir(old_tokens_dir):
+        if os.path.exists(new_tokens_dir):
+            logger.warning(
+                "Found legacy tokens directory %s but %s already exists - "
+                "leaving both in place.",
+                old_tokens_dir,
+                new_tokens_dir,
+            )
+        else:
+            os.makedirs(new_dir, exist_ok=True)
+            os.replace(old_tokens_dir, new_tokens_dir)
+            logger.info(
+                "Migrated legacy tokens directory %s -> %s",
+                old_tokens_dir,
+                new_tokens_dir,
+            )
