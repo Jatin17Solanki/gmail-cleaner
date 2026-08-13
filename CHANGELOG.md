@@ -569,6 +569,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Bulk actions (Delete, Archive, Mark as read, Unsubscribe, Download,
+  Routine run, Restore) now show real loading feedback instead of nothing
+  at all between click and the completion toast.** Raised directly by the
+  human from real usage: waiting through a quota-paced bulk delete/
+  unsubscribe with the button still enabled and unchanged, easy to mistake
+  for nothing having happened and click again - which would have fired a
+  duplicate operation. New `GmailCleaner.UI.setButtonLoading()`/
+  `restoreButton()` helpers (`static/js/ui.js`) disable the triggering
+  button and swap its label/icon to a spinner, reusing the exact spinner
+  markup (`ti-loader-2` + the existing `.spin` CSS class) already used for
+  the scan-in-progress indicator - not a new visual pattern. Wired into
+  `delete.js` (delete, unsubscribe, download), `archive.js`, `markread.js`,
+  `routines.js` (routine run), and `restore.js`. No JS test harness exists
+  (backlog item 3, parked) - verified with `node --check` on every touched
+  file; real interactive verification (does it visibly render/disable
+  correctly against a real running action) is left for the human's own
+  manual test, since it requires a real signed-in account and all local
+  account state was cleared earlier this session.
 - **`update-changelog.yml` opens a PR instead of pushing straight to
   `main`.** Found during a security-audit conversation: with branch
   protection now requiring a PR to merge into `main`, the old direct-push

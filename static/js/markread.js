@@ -44,6 +44,8 @@ GmailCleaner.MarkRead = (() => {
             GmailCleaner.UI.showErrorToast('No senders selected');
             return;
         }
+        const btn = document.getElementById('markReadSelectedBtn');
+        GmailCleaner.UI.setButtonLoading(btn, 'Marking as read...');
         try {
             await fetch('/api/mark-read-bulk', {
                 method: 'POST',
@@ -55,6 +57,8 @@ GmailCleaner.MarkRead = (() => {
             GmailCleaner.UI.showSuccessToast(`Marked emails from ${emails.length} sender${emails.length === 1 ? '' : 's'} as read`);
         } catch (error) {
             GmailCleaner.UI.showErrorToast('Error marking as read: ' + error.message);
+        } finally {
+            GmailCleaner.UI.restoreButton(btn);
         }
     }
 

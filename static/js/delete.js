@@ -56,22 +56,28 @@ GmailCleaner.Delete = (() => {
             return;
         }
 
+        const btn = document.getElementById('deleteUnsubSelectedBtn');
+        GmailCleaner.UI.setButtonLoading(btn, 'Unsubscribing...');
         let succeeded = 0;
-        for (const sender of toggled) {
-            try {
-                const resp = await fetch('/api/unsubscribe', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain: sender.email, link: sender.link })
-                });
-                const result = await resp.json();
-                if (result.success) succeeded++;
-            } catch (error) {
-                console.error('Unsubscribe error for', sender.email, error);
+        try {
+            for (const sender of toggled) {
+                try {
+                    const resp = await fetch('/api/unsubscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ domain: sender.email, link: sender.link })
+                    });
+                    const result = await resp.json();
+                    if (result.success) succeeded++;
+                } catch (error) {
+                    console.error('Unsubscribe error for', sender.email, error);
+                }
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
-            await new Promise(resolve => setTimeout(resolve, 200));
+            GmailCleaner.UI.showSuccessToast(`Unsubscribed from ${succeeded}/${toggled.length} senders`);
+        } finally {
+            GmailCleaner.UI.restoreButton(btn);
         }
-        GmailCleaner.UI.showSuccessToast(`Unsubscribed from ${succeeded}/${toggled.length} senders`);
     }
 
     async function downloadSelected() {
@@ -80,6 +86,8 @@ GmailCleaner.Delete = (() => {
             GmailCleaner.UI.showErrorToast('No senders selected');
             return;
         }
+        const btn = document.getElementById('deleteDownloadBtn');
+        GmailCleaner.UI.setButtonLoading(btn, '');
         try {
             await fetch('/api/download-emails', {
                 method: 'POST',
@@ -90,6 +98,8 @@ GmailCleaner.Delete = (() => {
             window.location.href = '/api/download-csv';
         } catch (error) {
             GmailCleaner.UI.showErrorToast('Error downloading: ' + error.message);
+        } finally {
+            GmailCleaner.UI.restoreButton(btn);
         }
     }
 
@@ -132,6 +142,8 @@ GmailCleaner.Delete = (() => {
         const emails = view.getSelectedSenderEmails();
         closeConfirm();
         if (emails.length === 0) return;
+        const btn = document.getElementById('deleteSelectedBtn');
+        GmailCleaner.UI.setButtonLoading(btn, 'Deleting...');
         try {
             await fetch('/api/delete-emails-bulk', {
                 method: 'POST',
@@ -143,6 +155,8 @@ GmailCleaner.Delete = (() => {
             GmailCleaner.UI.showSuccessToast(`Deleted emails from ${emails.length} sender${emails.length === 1 ? '' : 's'}`);
         } catch (error) {
             GmailCleaner.UI.showErrorToast('Error deleting: ' + error.message);
+        } finally {
+            GmailCleaner.UI.restoreButton(btn);
         }
     }
 

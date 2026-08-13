@@ -43,6 +43,8 @@ GmailCleaner.Archive = (() => {
             GmailCleaner.UI.showErrorToast('No senders selected');
             return;
         }
+        const btn = document.getElementById('archiveSelectedBtn');
+        GmailCleaner.UI.setButtonLoading(btn, 'Archiving...');
         try {
             await fetch('/api/archive', {
                 method: 'POST',
@@ -54,6 +56,8 @@ GmailCleaner.Archive = (() => {
             GmailCleaner.UI.showSuccessToast(`Archived emails from ${emails.length} sender${emails.length === 1 ? '' : 's'}`);
         } catch (error) {
             GmailCleaner.UI.showErrorToast('Error archiving: ' + error.message);
+        } finally {
+            GmailCleaner.UI.restoreButton(btn);
         }
     }
 
