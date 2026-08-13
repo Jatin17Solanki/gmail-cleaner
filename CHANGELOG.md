@@ -56,6 +56,17 @@ it; collapsed by default so the file stays scannable.
   to revise). 453/453 tests passing.
   </details>
 
+## [0.1.3] - 2026-08-13
+
+## What's Changed
+* docs: update CHANGELOG.md for release v0.1.2 by @Jatin17Solanki in https://github.com/Jatin17Solanki/gmail-cleaner/pull/15
+* Rewrite CHANGELOG.md for readability by @Jatin17Solanki in https://github.com/Jatin17Solanki/gmail-cleaner/pull/16
+* Account for true-sender-totals cost in scan time estimates by @Jatin17Solanki in https://github.com/Jatin17Solanki/gmail-cleaner/pull/17
+
+
+**Full Changelog**: https://github.com/Jatin17Solanki/gmail-cleaner/compare/v0.1.2...v0.1.3
+
+
 ## [0.1.2] - 2026-08-13
 
 ### Added
@@ -525,5 +536,6 @@ Initial release (pre-fork, upstream).
 [0.1.0]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.0
 [0.1.1]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.1
 [0.1.2]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.2
-[Unreleased]: https://github.com/Jatin17Solanki/gmail-cleaner/compare/v0.1.2...HEAD
+[0.1.3]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.3
+[Unreleased]: https://github.com/Jatin17Solanki/gmail-cleaner/compare/v0.1.3...HEAD
 [1.0.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v1.0.0
