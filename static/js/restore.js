@@ -55,7 +55,8 @@ GmailCleaner.Restore = {
                     <i class="ti ti-rotate"></i>Restore
                 </button>
             `;
-            li.querySelector('button').addEventListener('click', () => this.restoreEntry(entry.id));
+            const restoreBtn = li.querySelector('button');
+            restoreBtn.addEventListener('click', () => this.restoreEntry(entry.id, restoreBtn));
             list.appendChild(li);
         });
     },
@@ -85,7 +86,8 @@ GmailCleaner.Restore = {
         return `${sourceLabel} · ${when}`;
     },
 
-    async restoreEntry(entryId) {
+    async restoreEntry(entryId, triggerBtn) {
+        GmailCleaner.UI.setButtonLoading(triggerBtn, 'Restoring...');
         try {
             const response = await fetch(`/api/restore/${entryId}`, { method: 'POST' });
             const result = await response.json();

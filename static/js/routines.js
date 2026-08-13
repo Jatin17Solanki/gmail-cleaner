@@ -19,6 +19,7 @@ GmailCleaner.Routines = {
 
     senders: [],
     pendingRunRoutineId: null,
+    pendingRunButton: null,
 
     init() {
         document.getElementById('routinesNewBtn').addEventListener('click', () => this.openForm());
@@ -96,7 +97,7 @@ GmailCleaner.Routines = {
             const runBtn = document.createElement('button');
             runBtn.className = 'btn';
             runBtn.innerHTML = '<i class="ti ti-player-play"></i> Run';
-            runBtn.addEventListener('click', () => this.openConfirm(routine.id));
+            runBtn.addEventListener('click', () => this.openConfirm(routine.id, runBtn));
 
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'btn';
@@ -245,8 +246,9 @@ GmailCleaner.Routines = {
         this.loadRoutines();
     },
 
-    async openConfirm(routineId) {
+    async openConfirm(routineId, triggerBtn) {
         this.pendingRunRoutineId = routineId;
+        this.pendingRunButton = triggerBtn || null;
         try {
             const response = await fetch(`/api/routines/${routineId}/preview`, { method: 'POST' });
             if (!response.ok) {
@@ -290,13 +292,19 @@ GmailCleaner.Routines = {
     closeConfirm() {
         document.getElementById('routineConfirmOverlay').classList.add('hidden');
         this.pendingRunRoutineId = null;
+        this.pendingRunButton = null;
     },
 
     async confirmRun() {
         const routineId = this.pendingRunRoutineId;
+        const triggerBtn = this.pendingRunButton;
         if (!routineId) return;
         this.closeConfirm();
 
+        // The confirm modal's own button is hidden once closeConfirm() runs
+        // above, so loading feedback goes on the row's "Run" button instead
+        // - the one still visible on screen for the rest of this operation.
+        GmailCleaner.UI.setButtonLoading(triggerBtn, 'Running...');
         try {
             await fetch(`/api/routines/${routineId}/run`, { method: 'POST' });
             await this.pollRun();

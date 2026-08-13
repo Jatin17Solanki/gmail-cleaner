@@ -97,5 +97,28 @@ GmailCleaner.UI = {
 
     showInfoToast(message) {
         this.showToast(message, 'info', 4000);
+    },
+
+    // Bulk actions (delete/archive/mark-read/unsubscribe) can legitimately
+    // take minutes under quota pacing (Phase 4a2), but previously gave zero
+    // feedback between click and the completion toast - a new user with no
+    // way to tell it was working could click the same button repeatedly,
+    // firing duplicate bulk operations. Same spinner language as the
+    // scan-in-progress indicator (templates/index.html's sender_view macro)
+    // for consistency, not a new visual pattern.
+    setButtonLoading(button, loadingText) {
+        if (!button || button.disabled) return;
+        button.dataset.originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = `<i class="ti ti-loader-2 spin"></i>${this.escapeHtml(loadingText)}`;
+    },
+
+    restoreButton(button) {
+        if (!button) return;
+        if (button.dataset.originalHtml !== undefined) {
+            button.innerHTML = button.dataset.originalHtml;
+            delete button.dataset.originalHtml;
+        }
+        button.disabled = false;
     }
 };
