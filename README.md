@@ -138,7 +138,7 @@ And if you find yourself doing the same cleanup over and over, save it as a Rout
 
 ## This Fork's Roadmap
 
-> This reflects what's changed in **this fork** specifically, on top of the upstream project — not upstream's own roadmap. Full detail on every fix, including the back-and-forth bug-hunting along the way, is in [`CHANGELOG.md`](CHANGELOG.md); the spec behind it is in `PRD.md` at the repo root.
+> This reflects what's changed in **this fork** specifically, on top of the upstream project — not upstream's own roadmap. Full detail on every fix, including the back-and-forth bug-hunting along the way, is in [`CHANGELOG.md`](CHANGELOG.md).
 
 | Area | What changed | Status |
 |---|---|---|
