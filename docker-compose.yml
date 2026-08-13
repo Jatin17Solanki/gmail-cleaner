@@ -1,14 +1,13 @@
 services:
   gmail-cleaner:
-    # Option 1: Build locally (active by default) - this fork doesn't
-    # publish its own prebuilt image yet. Once it does, switch to Option 2
-    # below instead of building from source every time.
-    build: .
+    # Option 1: This fork's own published image (active by default -
+    # comment this out and uncomment "build: ." below to build from
+    # source instead, e.g. for local development on the app itself)
+    image: ghcr.io/jatin17solanki/gmail-cleaner:latest
+    pull_policy: always
 
-    # Option 2: This fork's own published image (once it exists - comment
-    # out "build: ." above and uncomment these two lines instead)
-    # image: ghcr.io/jatin17solanki/gmail-cleaner:latest
-    # pull_policy: always
+    # Option 2: Build locally from source
+    # build: .
 
     # Option 3: Upstream's image - the original project, without this
     # fork's fixes/features (multi-account, Restore, Routines, quota
@@ -41,7 +40,11 @@ services:
       # REQUIRED to protect this instance: set a strong shared password
       # gating the whole app (login page, all action endpoints). Without
       # this, the app runs with no login gate at all.
-      # - APP_PASSWORD=changeme
+      #
+      # Read from the repo-root .env file (gitignored) via Compose's
+      # built-in ${VAR} substitution - never write the real value directly
+      # into this tracked file.
+      - APP_PASSWORD=${APP_PASSWORD}
 
       # Uncomment and set OAUTH_HOST if accessing via custom domain or server IP
       # - OAUTH_HOST=gmail.example.com

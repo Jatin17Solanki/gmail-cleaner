@@ -36,6 +36,10 @@ The app will be available at http://localhost:8766
 
 ### Docker Development
 
+`docker-compose.yml` defaults to this fork's published image (Option 1). To
+test local changes, switch it to Option 2 (build from source) first — see
+the comments in `docker-compose.yml` — then:
+
 ```bash
 docker compose up --build
 ```
