@@ -237,9 +237,9 @@ Everything below is optional — skip this if you just want the defaults.
 
 ### Option A: Docker (Recommended)
 
-1. Build and start the container (this fork doesn't publish a prebuilt image yet - `docker-compose.yml` builds from source by default; once a `ghcr.io/jatin17solanki/gmail-cleaner` image exists, switch to that instead so you're not rebuilding locally every time - see the comments in `docker-compose.yml`):
+1. Pull and start the container (`docker-compose.yml` uses this fork's own published image, `ghcr.io/jatin17solanki/gmail-cleaner`, by default — see the comments in `docker-compose.yml` for the build-from-source alternative if you're working on the app itself):
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 2. Open the app in your browser:
@@ -276,7 +276,7 @@ The `docker-compose.yml` includes a `data` directory volume mount that automatic
 
 **No manual steps required!**
 
-- ✅ First-time setup: Just run `docker compose up --build` - the `data` directory is created automatically
+- ✅ First-time setup: Just run `docker compose up -d` - the `data` directory is created automatically
 - ✅ Authentication persists: Your token is saved to `./data/token.json` on the host
 - ✅ Container restarts: Your authentication is automatically loaded from the persisted file
 
@@ -292,7 +292,7 @@ docker compose down
 rm -f ./data/token.json
 
 # Start again (will prompt for new authentication)
-docker compose up --build
+docker compose up -d
 ```
 
 ### Option B: Python (with uv)
@@ -332,7 +332,7 @@ If you're using **custom port mappings** in Docker (e.g., mapping `18766:8766` a
 3. **Restart the container**:
 
    ```bash
-   docker compose down && docker compose up --build
+   docker compose down && docker compose up -d
    ```
 
 > **💡 How it works**: The app listens on port 8767 inside the container, but sets the OAuth redirect URI to use port 18767 (the external port). Docker forwards the external port to the internal port.
@@ -423,9 +423,9 @@ If you see `OAuth error: (mismatching_state) CSRF Warning`:
 
 2. **Clear browser cookies** for `accounts.google.com` (or use incognito/private window)
 
-3. **Rebuild and start fresh:**
+3. **Start fresh:**
    ```bash
-   docker compose up --build
+   docker compose up -d
    ```
 
 4. Copy the OAuth URL from logs and paste in browser

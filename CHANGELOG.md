@@ -542,6 +542,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONTRIBUTING.md`'s new "Maintainer Notes" section, since GitHub gives
   no automated warning when a repo secret's underlying PAT expires - the
   first sign would otherwise be a silently failing publish workflow.
+- Cut the first real release, `v0.1.0`, from `main` - the actual
+  `release: created` trigger (as opposed to the manual `workflow_dispatch`
+  test run above), producing both `v0.1.0` and `latest` tags on
+  `ghcr.io/jatin17solanki/gmail-cleaner`, confirmed publicly pullable via
+  an anonymous GHCR check. Smoke-tested the real published image directly
+  (`docker pull` + standalone `docker run`, isolated from any real
+  account data): boots cleanly, finds the mounted `credentials.json`,
+  serves the actual app (HTTP 200, real HTML/CSS/JS). OAuth sign-in itself
+  was left for the human's own manual click-through, since completing it
+  touches a real Google/Gmail account.
+- `docker-compose.yml`'s default flipped from Option 1 (build locally) to
+  the fork's own published image (`ghcr.io/jatin17solanki/gmail-cleaner:latest`,
+  `pull_policy: always`) now that it's verified working - build-from-source
+  is Option 2, for anyone working on the app itself. Updated every
+  `docker compose up --build` reference in the README's setup/troubleshooting
+  instructions to `docker compose up -d` accordingly (`--build` no longer
+  does anything meaningful once the default service has no `build:` key),
+  and added a note to `CONTRIBUTING.md`'s Docker Development section that
+  contributors need to switch to Option 2 before testing local changes.
 
 ### Changed
 - Updated pre-commit hook versions to latest stable releases
