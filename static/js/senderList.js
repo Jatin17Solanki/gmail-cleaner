@@ -179,7 +179,10 @@ class SenderListView {
                 // Pin the target timestamp the first time it's shown for
                 // this scan - recomputing Date.now() + estimated_seconds on
                 // every 300ms poll tick would make the displayed time keep
-                // creeping forward instead of staying fixed.
+                // creeping forward instead of staying fixed. The backend
+                // only ever sets this once per scan now (folded into a
+                // single upfront estimate - see quota.estimate_scan_seconds),
+                // so there's nothing to re-pin against later.
                 if (this._scanReadyAtMs === null) {
                     this._scanReadyAtMs = Date.now() + status.estimated_seconds * 1000;
                 }

@@ -88,15 +88,53 @@ COST = {
 _ESTIMATE_BUFFER_SECONDS = 15
 
 
-def estimate_scan_seconds(message_count: int) -> int:
-    """Rough wall-clock estimate for scanning `message_count` messages.
+def _extra_wait_seconds(total_cost: int) -> int:
+    """Shared cost-to-wall-clock conversion behind estimate_scan_seconds()
+    and estimate_sender_totals_seconds() below - same window math gate()
+    itself enforces."""
+    if total_cost <= QUOTA_CAP_PER_MINUTE:
+        return 0  # fits in a single window - no proactive wait expected
+    extra_windows = math.ceil(
+        (total_cost - QUOTA_CAP_PER_MINUTE) / QUOTA_CAP_PER_MINUTE
+    )
+    return extra_windows * QUOTA_WINDOW_SECONDS + _ESTIMATE_BUFFER_SECONDS
 
-    Uses the same cost model gate()/COST already enforce, so this tracks
-    real behavior rather than being a separate guess. Assumes a fresh quota
-    budget for the active account — concurrent activity elsewhere on the
-    same account (another tab, a routine, another device) can make the
-    real scan take longer than this estimate, same caveat as
-    MAX_CONCURRENT_BATCH_SIZE above.
+
+# scan_senders_for_delete()/_archive()/_markread() all follow the main
+# scan with a second phase, fetch_true_sender_totals() - one sequential
+# messages.list() call per unique sender (no batching/concurrency, unlike
+# the main scan's messages.get() calls), which real testing confirmed
+# adds meaningful wall-clock time of its own. True sender count isn't
+# known until after that second phase's own grouping step finishes, so it
+# can't be measured directly for an upfront estimate - two earlier
+# attempts to patch the estimate mid-scan once the real count became
+# known were both wrong: one used the wrong cost model (quota-window math
+# instead of per-call latency, so it added ~0 for any realistic scan);
+# the other's mid-scan revision double-counted already-elapsed time in
+# the frontend's countdown target, overshooting badly. A single upfront
+# estimate avoids that whole class of bug. Rough, not derived from a
+# validated cost model - approximates the eventual sender count as a
+# fraction of the message count, then prices that at a flat per-sender
+# time. Calibrated off one real data point (a 1000-message scan → 223
+# real senders, ~60s of real added time for that phase) - both constants
+# below are round numbers in that neighborhood, not tightly fit to it.
+_ESTIMATED_SENDERS_PER_MESSAGE = 0.2
+_SECONDS_PER_ESTIMATED_SENDER = 0.3
+
+
+def estimate_scan_seconds(message_count: int) -> int:
+    """Rough wall-clock estimate for scanning `message_count` messages,
+    including the follow-up fetch_true_sender_totals() pass that runs
+    after grouping (see _ESTIMATED_SENDERS_PER_MESSAGE/
+    _SECONDS_PER_ESTIMATED_SENDER above for why that part is a flat
+    approximation rather than derived from the real sender count).
+
+    The main-scan portion uses the same cost model gate()/COST already
+    enforce, so that part tracks real behavior rather than being a
+    separate guess. Assumes a fresh quota budget for the active account —
+    concurrent activity elsewhere on the same account (another tab, a
+    routine, another device) can make the real scan take longer than this
+    estimate, same caveat as MAX_CONCURRENT_BATCH_SIZE above.
     """
     if message_count <= 0:
         return 0
@@ -104,12 +142,10 @@ def estimate_scan_seconds(message_count: int) -> int:
     total_cost = (
         message_count * COST["messages.get"] + list_calls * COST["messages.list"]
     )
-    if total_cost <= QUOTA_CAP_PER_MINUTE:
-        return 0  # fits in a single window - no proactive wait expected
-    extra_windows = math.ceil(
-        (total_cost - QUOTA_CAP_PER_MINUTE) / QUOTA_CAP_PER_MINUTE
-    )
-    return extra_windows * QUOTA_WINDOW_SECONDS + _ESTIMATE_BUFFER_SECONDS
+    main_scan = _extra_wait_seconds(total_cost)
+    estimated_senders = message_count * _ESTIMATED_SENDERS_PER_MESSAGE
+    sender_totals_buffer = math.ceil(estimated_senders * _SECONDS_PER_ESTIMATED_SENDER)
+    return main_scan + sender_totals_buffer
 
 
 _RETRYABLE_403_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}

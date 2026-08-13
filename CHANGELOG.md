@@ -12,7 +12,49 @@ it; collapsed by default so the file stays scannable.
 
 ## [Unreleased]
 
-Nothing pending.
+### Fixed
+- **Scan time estimates didn't account for the true-sender-count pass that
+  runs after the main scan, so the displayed ETA could understate the
+  real wait for inboxes with many distinct senders.**
+  <details>
+  <summary>Details</summary>
+
+  `fetch_true_sender_totals()` runs one `messages.list()` call per unique
+  sender after grouping — a real cost the original
+  `estimate_scan_seconds()` couldn't factor in, since it's computed
+  before sender grouping exists.
+
+  Two earlier attempts at fixing this properly (via the real sender
+  count, updated mid-scan) both turned out wrong once tested against a
+  real scan. The first priced that phase using the same quota-window math
+  the main scan uses — wrong model: `fetch_true_sender_totals()` is a
+  plain sequential loop with no batching/concurrency, and its 5-units-
+  per-call cost almost never triggers quota throttling on its own (would
+  need 1,200+ unique senders in a single scan) — confirmed directly: no
+  visible ETA change for a real 1000-message scan. The second switched to
+  a per-call latency estimate added mid-scan once the real sender count
+  was known — also wrong, in the opposite direction: a real test showed
+  the displayed estimate ballooning from 4 minutes to 8 while the actual
+  run finished in 5, because the mid-scan update recomputed the countdown
+  target as "now + new total," double-counting the time that had already
+  elapsed during the main scan.
+
+  Replaced both with a single, simpler upfront estimate — no mid-scan
+  revision at all, which also removes the double-counting bug entirely,
+  not just works around it. `estimate_scan_seconds()` now approximates
+  the eventual sender count as a fraction of the message count
+  (`message_count × 0.2`, i.e. roughly 1 sender per 5 messages) and prices
+  that at a flat per-sender time (`× 0.3s`), added directly into the
+  single value computed at scan start. Both constants are round numbers
+  in the neighborhood of one real calibration point (a 1000-message scan
+  → 223 real senders, ~60s of real added time for that phase), not
+  tightly fit to it — documented as a rough approximation, not a derived
+  cost model, same honesty standard as the rest of this feature.
+  `scan_senders_for_delete`/`_archive`/`_markread` no longer touch
+  `estimated_seconds` a second time, and the frontend's ETA countdown
+  reverts to simply pinning its target once at scan start (nothing left
+  to revise). 453/453 tests passing.
+  </details>
 
 ## [0.1.2] - 2026-08-13
 
