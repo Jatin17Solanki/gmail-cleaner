@@ -8,12 +8,21 @@ jobs:
   update-changelog:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
+      # Uses GHCR_GMAIL_CLEANER_PAT, not the default GITHUB_TOKEN. Two
+      # reasons: (1) main is protected and requires a PR, so this needs
+      # push access to a new branch, not main directly; (2) GitHub Actions
+      # deliberately does not trigger downstream workflows (tests.yml,
+      # pr-checks.yml) for pushes/PRs made with the default GITHUB_TOKEN,
+      # to prevent workflow-triggering-workflow loops - so a GITHUB_TOKEN-
+      # opened PR here would never get its required "test" status check
+      # populated, leaving it permanently unmergeable. A PAT is treated as
+      # a real authenticated user, so it triggers those workflows normally.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GHCR_GMAIL_CLEANER_PAT }}
           fetch-depth: 0
           ref: main
 
@@ -21,6 +30,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Create branch
+        run: git checkout -b "changelog/${{ github.event.release.tag_name }}"
 
       - name: Update CHANGELOG.md
         env:
@@ -109,11 +121,22 @@ jobs:
           print("📅 Release date: " + formatted_date)
           PYTHON_SCRIPT
 
-      - name: Commit and push changes
+      - name: Commit and open a PR
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_GMAIL_CLEANER_PAT }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git checkout main
           git add CHANGELOG.md
-          git diff --staged --quiet || git commit -m "docs: update CHANGELOG.md for release ${{ github.event.release.tag_name }}"
-          git push origin main
+          if git diff --staged --quiet; then
+            echo "No changelog changes to commit."
+            exit 0
+          fi
+          git commit -m "docs: update CHANGELOG.md for release ${{ github.event.release.tag_name }}"
+          git push origin "changelog/${{ github.event.release.tag_name }}"
+          gh pr create \
+            --title "docs: update CHANGELOG.md for release ${{ github.event.release.tag_name }}" \
+            --body "Automated changelog update for release ${{ github.event.release.tag_name }}. Opens a PR instead of pushing directly to main, since main now requires one." \
+            --base main \
+            --head "changelog/${{ github.event.release.tag_name }}" \
+            --label documentation

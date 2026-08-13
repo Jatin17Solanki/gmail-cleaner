@@ -569,6 +569,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **`update-changelog.yml` opens a PR instead of pushing straight to
+  `main`.** Found during a security-audit conversation: with branch
+  protection now requiring a PR to merge into `main`, the old direct-push
+  behavior would start failing on every future release. Switched to
+  creating a `changelog/<tag>` branch and opening a PR, using
+  `GHCR_GMAIL_CLEANER_PAT` instead of the default `GITHUB_TOKEN` -
+  necessary because GitHub deliberately doesn't trigger downstream
+  workflows (like `tests.yml`, whose `test` check the branch-protection
+  rule requires) for pushes/PRs made with the default token, which would
+  otherwise leave the auto-opened PR permanently stuck with no way to
+  satisfy its required status check. `CONTRIBUTING.md`'s rotation notes
+  updated to reflect this secret now backing two workflows, not one.
 - **Local and Docker runs no longer read/write two different data
   directories.** Found while explaining the Docker publishing work: Docker
   used to auto-detect `/app/data` at startup and redirect `token_file`

@@ -66,14 +66,23 @@ docker compose up --build
 
 ### Rotating the GHCR publish token
 
-`.github/workflows/build-and-push.yml` pushes Docker images to
-`ghcr.io/jatin17solanki/gmail-cleaner` using a repo secret,
 `GHCR_GMAIL_CLEANER_PAT` — a classic PAT with `repo` + `write:packages`
-scopes, set with a 90-day expiry (created 2026-08-12, expires ~2026-11-10).
+scopes, set with a 90-day expiry (created 2026-08-12, expires ~2026-11-10) —
+is used by **two** workflows, not just one:
+
+- `.github/workflows/build-and-push.yml` pushes Docker images to
+  `ghcr.io/jatin17solanki/gmail-cleaner` (needs `write:packages`).
+- `.github/workflows/update-changelog.yml` opens a PR with the changelog
+  update on every release (needs `repo`, to push a branch and open a PR —
+  the default `GITHUB_TOKEN` can't be used here: `main` requires a PR to
+  merge, and GitHub deliberately doesn't trigger downstream workflows like
+  `tests.yml` for pushes/PRs made with the default token, which would leave
+  the PR stuck with no `test` status check ever running).
+
 GitHub does not send an automated warning to repo secrets when the
-underlying token expires — the first sign will be the "Build and Publish
-Docker images" workflow failing at its "Log in to Github Packages" step on
-the next release.
+underlying token expires — the first sign will be `build-and-push.yml`
+failing at "Log in to Github Packages," or `update-changelog.yml` failing
+to push its branch, on the next release.
 
 To rotate it:
 
@@ -88,7 +97,9 @@ To rotate it:
 3. Revoke the old PAT at <https://github.com/settings/tokens> once the new
    one is confirmed working (trigger a manual run via `gh workflow run
    build-and-push.yml` or the Actions tab's "Run workflow" button, and
-   check it succeeds).
+   check it succeeds). `update-changelog.yml` only fires on a real release,
+   so it's not independently testable the same way — its next real run is
+   the actual check for that one.
 
 ## Questions?
 
