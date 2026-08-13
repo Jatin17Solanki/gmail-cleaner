@@ -962,8 +962,8 @@ To use the published image instead of building locally, see `docker-compose.yml`
 - Mark emails as important/unimportant
 - Download emails as CSV export
 
-[0.1.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v0.1.0
-[0.1.1]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v0.1.1
-[0.1.2]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v0.1.2
-[Unreleased]: https://github.com/Gururagavendra/gmail-cleaner/compare/v0.1.2...HEAD
+[0.1.0]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.0
+[0.1.1]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.1
+[0.1.2]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.2
+[Unreleased]: https://github.com/Jatin17Solanki/gmail-cleaner/compare/v0.1.2...HEAD
 [1.0.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v1.0.0
