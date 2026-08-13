@@ -23,6 +23,7 @@ A **free**, privacy-focused tool to clean up a messy Gmail inbox — delete, uns
 
 **This fork**
 - [This Fork's Roadmap](#this-forks-roadmap)
+- [Future Work](#future-work)
 - [Architecture](#architecture)
 
 **Get started**
@@ -147,6 +148,17 @@ And if you find yourself doing the same cleanup over and over, save it as a Rout
 | Multi-account switcher | Sign in to multiple accounts, switch between them without re-authenticating | Done |
 | Routines | Saved recurring cleanup presets, with a preview before every run | Done |
 | Per-email preview | Expand a sender to see and exclude individual messages before a bulk action | Done |
+
+## Future Work
+
+Ideas that came up during development but aren't built — not committed to, just documented so they're not lost. No timeline attached.
+
+- **Edit a saved Routine.** Today you can only create or delete one; changing senders/threshold/actions means deleting and recreating, which loses its run history.
+- **Deeper per-sender preview.** Expanding a sender only shows what a scan already fetched — for a sender with far more mail than the scan's limit covered, there's no way to page further into just that one sender's history without rescanning everything at a higher limit.
+- **An explicit "scan entire mailbox" mode** with an upfront time estimate, for anyone who wants a full picture rather than the default preview-sized scan.
+- **A sender-first search entry point** — when you already know who you want to clean up, search that sender directly instead of scanning broadly first.
+- **Restore entries showing what was actually in the emails**, not just a sender + count.
+- **Routines re-using Gmail's change-history API** instead of re-scanning a mailbox from scratch on every run, so repeat runs against a mostly-unchanged inbox cost less.
 
 ## Architecture
 
