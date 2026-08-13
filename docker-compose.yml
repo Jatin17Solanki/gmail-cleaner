@@ -40,7 +40,11 @@ services:
       # REQUIRED to protect this instance: set a strong shared password
       # gating the whole app (login page, all action endpoints). Without
       # this, the app runs with no login gate at all.
-      # - APP_PASSWORD=changeme
+      #
+      # Read from the repo-root .env file (gitignored) via Compose's
+      # built-in ${VAR} substitution - never write the real value directly
+      # into this tracked file.
+      - APP_PASSWORD=${APP_PASSWORD}
 
       # Uncomment and set OAUTH_HOST if accessing via custom domain or server IP
       # - OAUTH_HOST=gmail.example.com
