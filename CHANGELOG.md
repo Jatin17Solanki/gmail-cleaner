@@ -912,6 +912,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit direction rather than guess-fixed, since a wrong fix here
   risks masking a real correctness issue rather than a cosmetic one
 
+## [0.1.2] - 2026-08-13
+
+## What's Changed
+* Add README Future Work section by @Jatin17Solanki in https://github.com/Jatin17Solanki/gmail-cleaner/pull/12
+* Open a PR from update-changelog.yml instead of pushing to main by @Jatin17Solanki in https://github.com/Jatin17Solanki/gmail-cleaner/pull/13
+* Add loading feedback to bulk action buttons by @Jatin17Solanki in https://github.com/Jatin17Solanki/gmail-cleaner/pull/14
+
+
+**Full Changelog**: https://github.com/Jatin17Solanki/gmail-cleaner/compare/v0.1.1...v0.1.2
+
+
 ## [0.1.1] - 2026-08-13
 
 ## What's Changed
@@ -951,7 +962,8 @@ To use the published image instead of building locally, see `docker-compose.yml`
 - Mark emails as important/unimportant
 - Download emails as CSV export
 
-[0.1.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v0.1.0
-[0.1.1]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v0.1.1
-[Unreleased]: https://github.com/Gururagavendra/gmail-cleaner/compare/v0.1.1...HEAD
+[0.1.0]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.0
+[0.1.1]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.1
+[0.1.2]: https://github.com/Jatin17Solanki/gmail-cleaner/releases/tag/v0.1.2
+[Unreleased]: https://github.com/Jatin17Solanki/gmail-cleaner/compare/v0.1.2...HEAD
 [1.0.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v1.0.0
