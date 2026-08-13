@@ -882,6 +882,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit direction rather than guess-fixed, since a wrong fix here
   risks masking a real correctness issue rather than a cosmetic one
 
+## [0.1.1] - 2026-08-13
+
+## What's Changed
+* Default docker-compose.yml to the published image by @Jatin17Solanki in https://github.com/Jatin17Solanki/gmail-cleaner/pull/10
+* Unify local and Docker data directory layout by @Jatin17Solanki in https://github.com/Jatin17Solanki/gmail-cleaner/pull/11
+
+
+**Full Changelog**: https://github.com/Jatin17Solanki/gmail-cleaner/compare/v0.1.0...v0.1.1
+
+
 ## [0.1.0] - 2026-08-12
 
 ### Added
@@ -912,5 +922,6 @@ To use the published image instead of building locally, see `docker-compose.yml`
 - Download emails as CSV export
 
 [0.1.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Gururagavendra/gmail-cleaner/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v0.1.1
+[Unreleased]: https://github.com/Gururagavendra/gmail-cleaner/compare/v0.1.1...HEAD
 [1.0.0]: https://github.com/Gururagavendra/gmail-cleaner/releases/tag/v1.0.0
