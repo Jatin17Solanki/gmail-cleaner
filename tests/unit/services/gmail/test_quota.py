@@ -480,34 +480,42 @@ class TestEstimateScanSeconds:
 
 
 class TestEstimateSenderTotalsSeconds:
-    """fetch_true_sender_totals() runs one messages.list() call per unique
-    sender after estimate_scan_seconds() has already been shown - this is
-    the follow-up estimate for that phase's own quota cost, meant to be
-    added on top rather than used standalone."""
+    """fetch_true_sender_totals() is a plain sequential loop - one
+    messages.list() call per unique sender, one after another, no
+    batching/concurrency - so its dominant real cost is sequential network
+    latency, not quota-window throttling (5 units/call almost never
+    triggers that on its own; would need 1,200+ unique senders in one
+    scan). This is the follow-up estimate for that phase, meant to be
+    added on top of estimate_scan_seconds() rather than used standalone."""
 
     def test_zero_or_negative_returns_zero(self):
         assert estimate_sender_totals_seconds(0) == 0
         assert estimate_sender_totals_seconds(-5) == 0
 
-    def test_few_senders_fits_in_one_window_returns_zero(self):
-        # 50 senders * 5 units = 250 units, well under the 6,000 cap.
-        assert estimate_sender_totals_seconds(50) == 0
+    def test_small_sender_count_is_not_silently_rounded_to_zero(self):
+        # A single sender still costs one real network round-trip -
+        # unlike the quota-window model alone, this must never understate
+        # a small but real cost as zero.
+        assert estimate_sender_totals_seconds(1) > 0
 
-    def test_many_senders_needs_extra_windows(self):
-        # 1500 senders * 5 = 7500 units -> ceil((7500-6000)/6000) = 1 extra
-        # window -> 60 + 15 = 75s.
-        assert estimate_sender_totals_seconds(1500) == 75
+    def test_matches_the_per_call_latency_formula(self):
+        # 100 senders * 0.3s/call = 30s (quota-window cost is 0 here,
+        # nowhere near the 1,200-sender threshold - latency dominates).
+        assert estimate_sender_totals_seconds(100) == 30
 
     def test_estimate_scales_with_sender_count(self):
         assert (
-            estimate_sender_totals_seconds(3000)
-            > estimate_sender_totals_seconds(1500)
+            estimate_sender_totals_seconds(300)
+            > estimate_sender_totals_seconds(100)
             > 0
         )
 
-    def test_exactly_at_cap_returns_zero(self):
-        # 1200 senders * 5 = 6000 units exactly.
-        assert estimate_sender_totals_seconds(1200) == 0
+    def test_latency_term_dominates_even_at_extreme_sender_counts(self):
+        # 3000 senders: latency-based = ceil(3000*0.3) = 900s. Quota-based
+        # (the floor) = ceil((15000-6000)/6000)*60+15 = 135s - latency
+        # wins, confirming the quota floor isn't silently overriding a
+        # smaller-but-correct latency estimate.
+        assert estimate_sender_totals_seconds(3000) == 900
 
 
 class TestFetchTrueSenderTotals:

@@ -126,23 +126,39 @@ def estimate_scan_seconds(message_count: int) -> int:
     return _extra_wait_seconds(total_cost)
 
 
+# fetch_true_sender_totals() is a plain sequential loop - one
+# messages.list() call per sender, one after another, no batching or
+# concurrency (unlike the main scan's batched messages.get() calls via
+# run_batched_gets). At 5 units/call it almost never triggers quota
+# throttling on its own (would need 1,200+ unique senders in one scan),
+# so the dominant real cost is just each call's own network round-trip,
+# paid sequentially - not quota-window math. Unlike
+# _ESTIMATE_BUFFER_SECONDS (empirically matched to real scan timings -
+# see PROGRESS.md's Phase 4a2 investigation), this hasn't been calibrated
+# against real measurements yet - it's a conservative placeholder pending
+# real-world data, deliberately erring toward overestimating rather than
+# promising a wait that runs short.
+_SEQUENTIAL_CALL_LATENCY_SECONDS = 0.3
+
+
 def estimate_sender_totals_seconds(sender_count: int) -> int:
     """Additional wall-clock estimate for fetch_true_sender_totals()'s own
-    pass - one messages.list() call per unique sender (5 units flat each,
-    ignoring the rare case of a single sender needing multiple pages, same
-    approximation-not-load-bearing standard as estimate_scan_seconds()).
+    pass, to be added on top of whatever estimate_scan_seconds() already
+    produced (not used standalone - the two phases run back to back within
+    the same scan, so their wait time is cumulative).
 
-    Meant to be added on top of whatever estimate_scan_seconds() already
-    produced, not used standalone - the two phases run back to back within
-    the same scan, so their wait time is cumulative. Errs toward
-    overestimating: it doesn't know how much headroom the current quota
-    window already has left over from the scan phase, so it prices this
-    phase as if starting from a fresh window. Better to overestimate a
-    wait than promise one that runs short.
+    Dominated by sequential per-call network latency, not quota-window
+    throttling - see _SEQUENTIAL_CALL_LATENCY_SECONDS above for why. Also
+    includes the quota-window cost as a floor, in case a genuinely extreme
+    sender count (1,200+) pushes this phase into real throttling on its
+    own - in practice the latency term is what actually shows up for
+    realistic scans.
     """
     if sender_count <= 0:
         return 0
-    return _extra_wait_seconds(sender_count * COST["messages.list"])
+    latency_based = math.ceil(sender_count * _SEQUENTIAL_CALL_LATENCY_SECONDS)
+    quota_based = _extra_wait_seconds(sender_count * COST["messages.list"])
+    return max(latency_based, quota_based)
 
 
 _RETRYABLE_403_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}

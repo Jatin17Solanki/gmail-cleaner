@@ -573,17 +573,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   account for the true-sender-count pass that runs after the main scan,
   so the displayed ETA could understate the real wait for inboxes with
   many distinct senders.** `fetch_true_sender_totals()` runs one
-  `messages.list()` call per unique sender after grouping - a real quota
-  cost the original `estimate_scan_seconds()` couldn't factor in, since
-  it's computed before sender grouping exists. New
-  `quota.estimate_sender_totals_seconds()` prices that phase using the
-  same window-based cost model, added on top of the initial estimate once
-  `scan_senders_for_delete`/`_archive`/`_markread` know the real sender
-  count. The frontend's ETA countdown previously pinned its target
-  timestamp once and never revised it (deliberately, to avoid drifting on
-  every poll tick) - updated to re-pin only when the backend's number
-  actually changes, so this correction reaches the display instead of
-  being silently ignored. New tests: `TestEstimateSenderTotalsSeconds` in
+  `messages.list()` call per unique sender after grouping - a real cost
+  the original `estimate_scan_seconds()` couldn't factor in, since it's
+  computed before sender grouping exists. New
+  `quota.estimate_sender_totals_seconds()` prices that phase, added on top
+  of the initial estimate once `scan_senders_for_delete`/`_archive`/
+  `_markread` know the real sender count.
+
+  First attempt at this priced the phase using the same quota-window math
+  `estimate_scan_seconds()` uses - wrong model. `fetch_true_sender_totals()`
+  is a plain sequential loop with no batching/concurrency, and its 5-units-
+  per-call cost almost never triggers quota throttling on its own (would
+  need 1,200+ unique senders in a single scan, essentially unreachable for
+  a realistic scan size) - so that first version added zero estimated time
+  for virtually every real inbox, which manual testing confirmed directly
+  (no visible change for a 1000-message scan). The actual dominant cost is
+  each call's own sequential network round-trip, not quota-window
+  throttling. Replaced with a per-call latency estimate instead
+  (`sender_count × 0.3s`, a conservative placeholder pending real
+  calibration data - documented as such, same honesty standard as the
+  rest of this feature), with the quota-window cost kept as a defensive
+  floor in case a future change to the cost/cap constants ever flips which
+  term dominates.
+
+  The frontend's ETA countdown previously pinned its target timestamp
+  once and never revised it (deliberately, to avoid drifting on every
+  poll tick) - updated to re-pin only when the backend's number actually
+  changes, so this correction reaches the display instead of being
+  silently ignored. New tests: `TestEstimateSenderTotalsSeconds` in
   `test_quota.py`, plus an `estimated_seconds`-topped-up integration test
   per scan function. 461/461 tests passing (up from 453).
 - **Bulk actions (Delete, Archive, Mark as read, Unsubscribe, Download,
