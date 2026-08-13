@@ -304,6 +304,10 @@ uv run python main.py
 
 The app opens at http://localhost:8766
 
+Your token, accounts, and app data persist under `./data/` (relative to
+wherever you run this from) — the same directory Docker's `data` mount
+uses, so both run modes now share one consistent layout.
+
 
 ## Advanced Configuration
 
