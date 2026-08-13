@@ -84,6 +84,7 @@ class SenderListView {
         this.litepicker = null;
         this.scanning = false;
         this._scanReadyAtMs = null;
+        this._lastEstimatedSeconds = null;
 
         this._initialEmptyHtml = null;
 
@@ -119,6 +120,7 @@ class SenderListView {
         if (progressText) progressText.textContent = 'Scanning...';
         eta?.classList.add('hidden');
         this._scanReadyAtMs = null;
+        this._lastEstimatedSeconds = null;
 
         try {
             const startResp = await fetch(this.scanEndpoint, {
@@ -152,6 +154,7 @@ class SenderListView {
             progress?.classList.add('hidden');
             eta?.classList.add('hidden');
             this._scanReadyAtMs = null;
+            this._lastEstimatedSeconds = null;
         }
     }
 
@@ -176,12 +179,17 @@ class SenderListView {
         // meaningfully long wait - a fast scan doesn't need it.
         if (eta && etaText) {
             if (status.estimated_seconds && status.estimated_seconds > 30) {
-                // Pin the target timestamp the first time it's shown for
-                // this scan - recomputing Date.now() + estimated_seconds on
-                // every 300ms poll tick would make the displayed time keep
-                // creeping forward instead of staying fixed.
-                if (this._scanReadyAtMs === null) {
+                // Pin the target timestamp rather than recomputing
+                // Date.now() + estimated_seconds on every 300ms poll tick,
+                // which would make the displayed time keep creeping
+                // forward instead of staying fixed. Re-pin only when the
+                // backend's own number actually changes (e.g. once the
+                // true sender-count total-fetch phase's cost gets added
+                // on top of the initial estimate) - not on every poll that
+                // happens to report the same value again.
+                if (this._scanReadyAtMs === null || status.estimated_seconds !== this._lastEstimatedSeconds) {
                     this._scanReadyAtMs = Date.now() + status.estimated_seconds * 1000;
+                    this._lastEstimatedSeconds = status.estimated_seconds;
                 }
                 etaText.textContent = GmailCleaner.SenderList.formatEta(
                     status.estimated_seconds, this._scanReadyAtMs

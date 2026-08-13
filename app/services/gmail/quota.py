@@ -88,6 +88,18 @@ COST = {
 _ESTIMATE_BUFFER_SECONDS = 15
 
 
+def _extra_wait_seconds(total_cost: int) -> int:
+    """Shared cost-to-wall-clock conversion behind estimate_scan_seconds()
+    and estimate_sender_totals_seconds() below - same window math gate()
+    itself enforces."""
+    if total_cost <= QUOTA_CAP_PER_MINUTE:
+        return 0  # fits in a single window - no proactive wait expected
+    extra_windows = math.ceil(
+        (total_cost - QUOTA_CAP_PER_MINUTE) / QUOTA_CAP_PER_MINUTE
+    )
+    return extra_windows * QUOTA_WINDOW_SECONDS + _ESTIMATE_BUFFER_SECONDS
+
+
 def estimate_scan_seconds(message_count: int) -> int:
     """Rough wall-clock estimate for scanning `message_count` messages.
 
@@ -97,6 +109,13 @@ def estimate_scan_seconds(message_count: int) -> int:
     same account (another tab, a routine, another device) can make the
     real scan take longer than this estimate, same caveat as
     MAX_CONCURRENT_BATCH_SIZE above.
+
+    Deliberately doesn't include fetch_true_sender_totals()'s own cost -
+    that phase's sender count isn't known until after this estimate is
+    first shown (sender grouping only happens once every message's
+    metadata has been fetched). See estimate_sender_totals_seconds() for
+    the follow-up estimate scan_senders_for_delete()/_archive()/_markread()
+    add once the true sender count is known.
     """
     if message_count <= 0:
         return 0
@@ -104,12 +123,26 @@ def estimate_scan_seconds(message_count: int) -> int:
     total_cost = (
         message_count * COST["messages.get"] + list_calls * COST["messages.list"]
     )
-    if total_cost <= QUOTA_CAP_PER_MINUTE:
-        return 0  # fits in a single window - no proactive wait expected
-    extra_windows = math.ceil(
-        (total_cost - QUOTA_CAP_PER_MINUTE) / QUOTA_CAP_PER_MINUTE
-    )
-    return extra_windows * QUOTA_WINDOW_SECONDS + _ESTIMATE_BUFFER_SECONDS
+    return _extra_wait_seconds(total_cost)
+
+
+def estimate_sender_totals_seconds(sender_count: int) -> int:
+    """Additional wall-clock estimate for fetch_true_sender_totals()'s own
+    pass - one messages.list() call per unique sender (5 units flat each,
+    ignoring the rare case of a single sender needing multiple pages, same
+    approximation-not-load-bearing standard as estimate_scan_seconds()).
+
+    Meant to be added on top of whatever estimate_scan_seconds() already
+    produced, not used standalone - the two phases run back to back within
+    the same scan, so their wait time is cumulative. Errs toward
+    overestimating: it doesn't know how much headroom the current quota
+    window already has left over from the scan phase, so it prices this
+    phase as if starting from a fresh window. Better to overestimate a
+    wait than promise one that runs short.
+    """
+    if sender_count <= 0:
+        return 0
+    return _extra_wait_seconds(sender_count * COST["messages.list"])
 
 
 _RETRYABLE_403_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}

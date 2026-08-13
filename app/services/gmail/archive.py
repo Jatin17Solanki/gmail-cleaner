@@ -166,6 +166,12 @@ def scan_senders_for_archive(limit: int = 1000, filters: Optional[dict] = None):
         )
 
         state.archive_scan_status["message"] = "Fetching total counts..."
+        # The upfront estimate (set above, before sender grouping existed)
+        # doesn't know sender count yet - top it up now that it does, so
+        # the ETA reflects this phase's own quota cost too.
+        state.archive_scan_status["estimated_seconds"] = state.archive_scan_status.get(
+            "estimated_seconds", 0
+        ) + quota.estimate_sender_totals_seconds(len(sorted_senders))
         quota.fetch_true_sender_totals(
             service,
             sorted_senders,

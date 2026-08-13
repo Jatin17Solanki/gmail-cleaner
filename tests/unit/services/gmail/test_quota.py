@@ -18,6 +18,7 @@ from app.services.gmail.quota import (
     MAX_CONCURRENT_BATCH_SIZE,
     QuotaTracker,
     estimate_scan_seconds,
+    estimate_sender_totals_seconds,
     fetch_true_sender_totals,
 )
 
@@ -476,6 +477,37 @@ class TestEstimateScanSeconds:
         # 300 messages * 20 = 6000 units exactly (ignoring list() cost),
         # comfortably under with the small list() addition too.
         assert estimate_scan_seconds(299) == 0
+
+
+class TestEstimateSenderTotalsSeconds:
+    """fetch_true_sender_totals() runs one messages.list() call per unique
+    sender after estimate_scan_seconds() has already been shown - this is
+    the follow-up estimate for that phase's own quota cost, meant to be
+    added on top rather than used standalone."""
+
+    def test_zero_or_negative_returns_zero(self):
+        assert estimate_sender_totals_seconds(0) == 0
+        assert estimate_sender_totals_seconds(-5) == 0
+
+    def test_few_senders_fits_in_one_window_returns_zero(self):
+        # 50 senders * 5 units = 250 units, well under the 6,000 cap.
+        assert estimate_sender_totals_seconds(50) == 0
+
+    def test_many_senders_needs_extra_windows(self):
+        # 1500 senders * 5 = 7500 units -> ceil((7500-6000)/6000) = 1 extra
+        # window -> 60 + 15 = 75s.
+        assert estimate_sender_totals_seconds(1500) == 75
+
+    def test_estimate_scales_with_sender_count(self):
+        assert (
+            estimate_sender_totals_seconds(3000)
+            > estimate_sender_totals_seconds(1500)
+            > 0
+        )
+
+    def test_exactly_at_cap_returns_zero(self):
+        # 1200 senders * 5 = 6000 units exactly.
+        assert estimate_sender_totals_seconds(1200) == 0
 
 
 class TestFetchTrueSenderTotals:

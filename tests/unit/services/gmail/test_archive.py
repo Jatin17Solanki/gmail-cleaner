@@ -202,6 +202,34 @@ class TestScanSendersForArchiveTrueTotals:
         assert sender["total_count"] == 87
 
 
+class TestScanSendersForArchiveEstimatedSeconds:
+    """The upfront estimate (set right after the initial messages.list())
+    doesn't know the true sender count yet - that's only known after
+    grouping. It must get topped up with fetch_true_sender_totals()'s own
+    cost once that count is known, not left understating the real wait."""
+
+    @patch("app.services.gmail.archive.quota.estimate_sender_totals_seconds")
+    @patch("app.services.gmail.archive.quota.estimate_scan_seconds")
+    @patch("app.services.gmail.archive.get_gmail_service")
+    def test_estimated_seconds_is_topped_up_after_sender_grouping(
+        self, mock_get_service, mock_estimate_scan, mock_estimate_totals
+    ):
+        mock_estimate_scan.return_value = 40
+        mock_estimate_totals.return_value = 75
+        response = _message_response("promo@example.com", "Sale")
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {"messages": [{"id": "m1"}]},
+            {"messages": [{"id": "m1"}]},
+        ]
+
+        scan_senders_for_archive(limit=10)
+
+        mock_estimate_totals.assert_called_once_with(1)
+        assert state.archive_scan_status["estimated_seconds"] == 115
+
+
 class TestScanSendersForArchive:
     """Phase 3: Archive gets its own scan, mirroring scan_senders_for_delete
     (sender/count/subjects/dates/message_ids), independent of Delete's

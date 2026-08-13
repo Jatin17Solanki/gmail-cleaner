@@ -569,6 +569,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalized code style across Python, JavaScript, CSS, and HTML files
 
 ### Fixed
+- **Scan time estimates ("This scan will take about N minutes") didn't
+  account for the true-sender-count pass that runs after the main scan,
+  so the displayed ETA could understate the real wait for inboxes with
+  many distinct senders.** `fetch_true_sender_totals()` runs one
+  `messages.list()` call per unique sender after grouping - a real quota
+  cost the original `estimate_scan_seconds()` couldn't factor in, since
+  it's computed before sender grouping exists. New
+  `quota.estimate_sender_totals_seconds()` prices that phase using the
+  same window-based cost model, added on top of the initial estimate once
+  `scan_senders_for_delete`/`_archive`/`_markread` know the real sender
+  count. The frontend's ETA countdown previously pinned its target
+  timestamp once and never revised it (deliberately, to avoid drifting on
+  every poll tick) - updated to re-pin only when the backend's number
+  actually changes, so this correction reaches the display instead of
+  being silently ignored. New tests: `TestEstimateSenderTotalsSeconds` in
+  `test_quota.py`, plus an `estimated_seconds`-topped-up integration test
+  per scan function. 461/461 tests passing (up from 453).
 - **Bulk actions (Delete, Archive, Mark as read, Unsubscribe, Download,
   Routine run, Restore) now show real loading feedback instead of nothing
   at all between click and the completion toast.** Raised directly by the

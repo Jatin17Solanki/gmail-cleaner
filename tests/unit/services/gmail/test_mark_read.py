@@ -200,6 +200,31 @@ class TestScanSendersForMarkreadTrueTotals:
         assert sender["count"] == 1
         assert sender["total_count"] == 24
 
+    @patch("app.services.gmail.mark_read.quota.estimate_sender_totals_seconds")
+    @patch("app.services.gmail.mark_read.quota.estimate_scan_seconds")
+    @patch("app.services.gmail.mark_read.get_gmail_service")
+    def test_estimated_seconds_is_topped_up_after_sender_grouping(
+        self, mock_get_service, mock_estimate_scan, mock_estimate_totals
+    ):
+        """The upfront estimate (set right after the initial
+        messages.list()) doesn't know the true sender count yet - that's
+        only known after grouping. It must get topped up with
+        fetch_true_sender_totals()'s own cost once that count is known."""
+        mock_estimate_scan.return_value = 40
+        mock_estimate_totals.return_value = 75
+        response = _message_response("digest@example.com", "Daily digest")
+        service = _mock_batch_service(["m1"], {"m1": response})
+        mock_get_service.return_value = (service, None)
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
+            {"messages": [{"id": "m1"}]},
+            {"messages": [{"id": "m1"}]},
+        ]
+
+        scan_senders_for_markread(limit=10)
+
+        mock_estimate_totals.assert_called_once_with(1)
+        assert state.markread_scan_status["estimated_seconds"] == 115
+
     @patch("app.services.gmail.mark_read.get_gmail_service")
     def test_true_total_query_is_scoped_to_unread(self, mock_get_service):
         """The true-count pass must reuse query_filters (unread_only=True),
