@@ -18,7 +18,6 @@ from app.services.gmail.quota import (
     MAX_CONCURRENT_BATCH_SIZE,
     QuotaTracker,
     estimate_scan_seconds,
-    estimate_sender_totals_seconds,
     fetch_true_sender_totals,
 )
 
@@ -456,66 +455,40 @@ class TestRunBatchedGetsConcurrencyClamp:
 
 
 class TestEstimateScanSeconds:
+    """Includes both the main scan's own quota-window cost and a flat,
+    roughly-calibrated buffer for the fetch_true_sender_totals() pass that
+    runs afterward (see the constants' own comments in quota.py for why
+    that part is a rough approximation, not a derived cost model, and why
+    it's folded into a single upfront estimate rather than revised
+    mid-scan once the real sender count is known)."""
+
     def test_zero_or_negative_returns_zero(self):
         assert estimate_scan_seconds(0) == 0
         assert estimate_scan_seconds(-5) == 0
 
-    def test_small_scan_fits_in_one_window_returns_zero(self):
-        # 100 messages: 100*20 + 1*5 = 2005 units, well under the 6,000 cap.
-        assert estimate_scan_seconds(100) == 0
+    def test_small_scan_is_just_the_sender_totals_buffer(self):
+        # 100 messages: main-scan cost (100*20 + 1*5 = 2005 units) is well
+        # under the 6,000 cap, so only the flat buffer applies:
+        # ceil(100 * 0.2 * 0.3) = 6s.
+        assert estimate_scan_seconds(100) == 6
 
     def test_large_scan_matches_confirmed_real_world_behavior(self):
-        # 992 messages: matches the actual scan from manual testing (real
-        # elapsed time was ~188.5s) - 992*20 + 2*5 = 19850 units,
-        # extra_windows = ceil((19850-6000)/6000) = 3 -> 3*60+15 = 195s.
-        assert estimate_scan_seconds(992) == 195
+        # 992 messages: main-scan portion matches the actual scan from
+        # manual testing (real elapsed time was ~188.5s) -
+        # 992*20 + 2*5 = 19850 units, extra_windows = ceil((19850-6000)/6000)
+        # = 3 -> 3*60+15 = 195s, plus the sender-totals buffer
+        # ceil(992*0.2*0.3) = 60s -> 255s total.
+        assert estimate_scan_seconds(992) == 255
 
     def test_estimate_scales_with_message_count(self):
         assert estimate_scan_seconds(2000) > estimate_scan_seconds(1000) > 0
 
-    def test_exactly_at_cap_returns_zero(self):
-        # 300 messages * 20 = 6000 units exactly (ignoring list() cost),
-        # comfortably under with the small list() addition too.
-        assert estimate_scan_seconds(299) == 0
-
-
-class TestEstimateSenderTotalsSeconds:
-    """fetch_true_sender_totals() is a plain sequential loop - one
-    messages.list() call per unique sender, one after another, no
-    batching/concurrency - so its dominant real cost is sequential network
-    latency, not quota-window throttling (5 units/call almost never
-    triggers that on its own; would need 1,200+ unique senders in one
-    scan). This is the follow-up estimate for that phase, meant to be
-    added on top of estimate_scan_seconds() rather than used standalone."""
-
-    def test_zero_or_negative_returns_zero(self):
-        assert estimate_sender_totals_seconds(0) == 0
-        assert estimate_sender_totals_seconds(-5) == 0
-
-    def test_small_sender_count_is_not_silently_rounded_to_zero(self):
-        # A single sender still costs one real network round-trip -
-        # unlike the quota-window model alone, this must never understate
-        # a small but real cost as zero.
-        assert estimate_sender_totals_seconds(1) > 0
-
-    def test_matches_the_per_call_latency_formula(self):
-        # 100 senders * 0.3s/call = 30s (quota-window cost is 0 here,
-        # nowhere near the 1,200-sender threshold - latency dominates).
-        assert estimate_sender_totals_seconds(100) == 30
-
-    def test_estimate_scales_with_sender_count(self):
-        assert (
-            estimate_sender_totals_seconds(300)
-            > estimate_sender_totals_seconds(100)
-            > 0
-        )
-
-    def test_latency_term_dominates_even_at_extreme_sender_counts(self):
-        # 3000 senders: latency-based = ceil(3000*0.3) = 900s. Quota-based
-        # (the floor) = ceil((15000-6000)/6000)*60+15 = 135s - latency
-        # wins, confirming the quota floor isn't silently overriding a
-        # smaller-but-correct latency estimate.
-        assert estimate_sender_totals_seconds(3000) == 900
+    def test_small_scan_never_rounds_down_to_a_bare_zero(self):
+        # Even a scan whose main-scan cost fits in one window still costs
+        # something real for the sender-totals pass - unlike the
+        # quota-window model alone, this must never silently show "no
+        # wait at all" for a scan that will still take some real time.
+        assert estimate_scan_seconds(299) > 0
 
 
 class TestFetchTrueSenderTotals:

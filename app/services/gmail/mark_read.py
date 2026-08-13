@@ -172,12 +172,6 @@ def scan_senders_for_markread(limit: int = 1000, filters: Optional[dict] = None)
         )
 
         state.markread_scan_status["message"] = "Fetching total counts..."
-        # The upfront estimate (set above, before sender grouping existed)
-        # doesn't know sender count yet - top it up now that it does, so
-        # the ETA reflects this phase's own quota cost too.
-        state.markread_scan_status["estimated_seconds"] = state.markread_scan_status.get(
-            "estimated_seconds", 0
-        ) + quota.estimate_sender_totals_seconds(len(sorted_senders))
         # Reuses query_filters (already carries unread_only=True) so the
         # true count stays scoped to unread mail, same as the scan itself -
         # not every message ever received from this sender.

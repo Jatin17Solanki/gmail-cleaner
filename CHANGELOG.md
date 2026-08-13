@@ -22,32 +22,38 @@ it; collapsed by default so the file stays scannable.
   `fetch_true_sender_totals()` runs one `messages.list()` call per unique
   sender after grouping — a real cost the original
   `estimate_scan_seconds()` couldn't factor in, since it's computed
-  before sender grouping exists. New `quota.estimate_sender_totals_seconds()`
-  prices that phase, added on top of the initial estimate once
-  `scan_senders_for_delete`/`_archive`/`_markread` know the real sender
-  count.
+  before sender grouping exists.
 
-  First attempt priced the phase using the same quota-window math
-  `estimate_scan_seconds()` uses — wrong model. `fetch_true_sender_totals()`
-  is a plain sequential loop with no batching/concurrency, and its
-  5-units-per-call cost almost never triggers quota throttling on its own
-  (would need 1,200+ unique senders in a single scan, essentially
-  unreachable for a realistic scan size) — manual testing confirmed this
-  directly: no visible ETA change for a real 1000-message scan. The
-  actual dominant cost is each call's own sequential network round-trip,
-  not quota throttling. Replaced with a per-call latency estimate
-  (`sender_count × 0.3s`, a conservative placeholder pending real
-  calibration data), keeping the quota-window cost only as a defensive
-  floor in case a future change to the cost/cap constants ever flips
-  which term dominates.
+  Two earlier attempts at fixing this properly (via the real sender
+  count, updated mid-scan) both turned out wrong once tested against a
+  real scan. The first priced that phase using the same quota-window math
+  the main scan uses — wrong model: `fetch_true_sender_totals()` is a
+  plain sequential loop with no batching/concurrency, and its 5-units-
+  per-call cost almost never triggers quota throttling on its own (would
+  need 1,200+ unique senders in a single scan) — confirmed directly: no
+  visible ETA change for a real 1000-message scan. The second switched to
+  a per-call latency estimate added mid-scan once the real sender count
+  was known — also wrong, in the opposite direction: a real test showed
+  the displayed estimate ballooning from 4 minutes to 8 while the actual
+  run finished in 5, because the mid-scan update recomputed the countdown
+  target as "now + new total," double-counting the time that had already
+  elapsed during the main scan.
 
-  The frontend's ETA countdown previously pinned its target timestamp
-  once and never revised it (deliberately, to avoid drifting on every
-  poll tick) — updated to re-pin only when the backend's number actually
-  changes, so this correction reaches the display instead of being
-  silently ignored. New `TestEstimateSenderTotalsSeconds` in
-  `test_quota.py`, plus an `estimated_seconds`-topped-up integration test
-  per scan function. 461/461 tests passing (up from 453).
+  Replaced both with a single, simpler upfront estimate — no mid-scan
+  revision at all, which also removes the double-counting bug entirely,
+  not just works around it. `estimate_scan_seconds()` now approximates
+  the eventual sender count as a fraction of the message count
+  (`message_count × 0.2`, i.e. roughly 1 sender per 5 messages) and prices
+  that at a flat per-sender time (`× 0.3s`), added directly into the
+  single value computed at scan start. Both constants are round numbers
+  in the neighborhood of one real calibration point (a 1000-message scan
+  → 223 real senders, ~60s of real added time for that phase), not
+  tightly fit to it — documented as a rough approximation, not a derived
+  cost model, same honesty standard as the rest of this feature.
+  `scan_senders_for_delete`/`_archive`/`_markread` no longer touch
+  `estimated_seconds` a second time, and the frontend's ETA countdown
+  reverts to simply pinning its target once at scan start (nothing left
+  to revise). 453/453 tests passing.
   </details>
 
 ## [0.1.2] - 2026-08-13

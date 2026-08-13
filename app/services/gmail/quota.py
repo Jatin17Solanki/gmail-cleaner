@@ -100,22 +100,41 @@ def _extra_wait_seconds(total_cost: int) -> int:
     return extra_windows * QUOTA_WINDOW_SECONDS + _ESTIMATE_BUFFER_SECONDS
 
 
+# scan_senders_for_delete()/_archive()/_markread() all follow the main
+# scan with a second phase, fetch_true_sender_totals() - one sequential
+# messages.list() call per unique sender (no batching/concurrency, unlike
+# the main scan's messages.get() calls), which real testing confirmed
+# adds meaningful wall-clock time of its own. True sender count isn't
+# known until after that second phase's own grouping step finishes, so it
+# can't be measured directly for an upfront estimate - two earlier
+# attempts to patch the estimate mid-scan once the real count became
+# known were both wrong: one used the wrong cost model (quota-window math
+# instead of per-call latency, so it added ~0 for any realistic scan);
+# the other's mid-scan revision double-counted already-elapsed time in
+# the frontend's countdown target, overshooting badly. A single upfront
+# estimate avoids that whole class of bug. Rough, not derived from a
+# validated cost model - approximates the eventual sender count as a
+# fraction of the message count, then prices that at a flat per-sender
+# time. Calibrated off one real data point (a 1000-message scan → 223
+# real senders, ~60s of real added time for that phase) - both constants
+# below are round numbers in that neighborhood, not tightly fit to it.
+_ESTIMATED_SENDERS_PER_MESSAGE = 0.2
+_SECONDS_PER_ESTIMATED_SENDER = 0.3
+
+
 def estimate_scan_seconds(message_count: int) -> int:
-    """Rough wall-clock estimate for scanning `message_count` messages.
+    """Rough wall-clock estimate for scanning `message_count` messages,
+    including the follow-up fetch_true_sender_totals() pass that runs
+    after grouping (see _ESTIMATED_SENDERS_PER_MESSAGE/
+    _SECONDS_PER_ESTIMATED_SENDER above for why that part is a flat
+    approximation rather than derived from the real sender count).
 
-    Uses the same cost model gate()/COST already enforce, so this tracks
-    real behavior rather than being a separate guess. Assumes a fresh quota
-    budget for the active account — concurrent activity elsewhere on the
-    same account (another tab, a routine, another device) can make the
-    real scan take longer than this estimate, same caveat as
-    MAX_CONCURRENT_BATCH_SIZE above.
-
-    Deliberately doesn't include fetch_true_sender_totals()'s own cost -
-    that phase's sender count isn't known until after this estimate is
-    first shown (sender grouping only happens once every message's
-    metadata has been fetched). See estimate_sender_totals_seconds() for
-    the follow-up estimate scan_senders_for_delete()/_archive()/_markread()
-    add once the true sender count is known.
+    The main-scan portion uses the same cost model gate()/COST already
+    enforce, so that part tracks real behavior rather than being a
+    separate guess. Assumes a fresh quota budget for the active account —
+    concurrent activity elsewhere on the same account (another tab, a
+    routine, another device) can make the real scan take longer than this
+    estimate, same caveat as MAX_CONCURRENT_BATCH_SIZE above.
     """
     if message_count <= 0:
         return 0
@@ -123,42 +142,10 @@ def estimate_scan_seconds(message_count: int) -> int:
     total_cost = (
         message_count * COST["messages.get"] + list_calls * COST["messages.list"]
     )
-    return _extra_wait_seconds(total_cost)
-
-
-# fetch_true_sender_totals() is a plain sequential loop - one
-# messages.list() call per sender, one after another, no batching or
-# concurrency (unlike the main scan's batched messages.get() calls via
-# run_batched_gets). At 5 units/call it almost never triggers quota
-# throttling on its own (would need 1,200+ unique senders in one scan),
-# so the dominant real cost is just each call's own network round-trip,
-# paid sequentially - not quota-window math. Unlike
-# _ESTIMATE_BUFFER_SECONDS (empirically matched to real scan timings -
-# see PROGRESS.md's Phase 4a2 investigation), this hasn't been calibrated
-# against real measurements yet - it's a conservative placeholder pending
-# real-world data, deliberately erring toward overestimating rather than
-# promising a wait that runs short.
-_SEQUENTIAL_CALL_LATENCY_SECONDS = 0.3
-
-
-def estimate_sender_totals_seconds(sender_count: int) -> int:
-    """Additional wall-clock estimate for fetch_true_sender_totals()'s own
-    pass, to be added on top of whatever estimate_scan_seconds() already
-    produced (not used standalone - the two phases run back to back within
-    the same scan, so their wait time is cumulative).
-
-    Dominated by sequential per-call network latency, not quota-window
-    throttling - see _SEQUENTIAL_CALL_LATENCY_SECONDS above for why. Also
-    includes the quota-window cost as a floor, in case a genuinely extreme
-    sender count (1,200+) pushes this phase into real throttling on its
-    own - in practice the latency term is what actually shows up for
-    realistic scans.
-    """
-    if sender_count <= 0:
-        return 0
-    latency_based = math.ceil(sender_count * _SEQUENTIAL_CALL_LATENCY_SECONDS)
-    quota_based = _extra_wait_seconds(sender_count * COST["messages.list"])
-    return max(latency_based, quota_based)
+    main_scan = _extra_wait_seconds(total_cost)
+    estimated_senders = message_count * _ESTIMATED_SENDERS_PER_MESSAGE
+    sender_totals_buffer = math.ceil(estimated_senders * _SECONDS_PER_ESTIMATED_SENDER)
+    return main_scan + sender_totals_buffer
 
 
 _RETRYABLE_403_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
