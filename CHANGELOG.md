@@ -12,22 +12,7 @@ it; collapsed by default so the file stays scannable.
 
 ## [Unreleased]
 
-### Changed
-- **Rewrote this file for readability.** It had grown to nearly 1,000
-  lines of unbroken narrative, written in a third-person "the human did
-  X" voice that made sense mid-development-session but read as confusing
-  internal narration to anyone else. Restructured every entry as a bold
-  one-line summary with a collapsed "Details" section underneath for the
-  full story, removed the narrator voice throughout, and reconciled a
-  structural bug where the `[Unreleased]` section had never actually been
-  folded into a release — it just kept accumulating everything since the
-  fork began while separate, disconnected auto-generated `v0.1.x` sections
-  got appended alongside it. Entries are now filed under the version that
-  actually shipped them, cross-checked against each release's real PR
-  list.
-- Removed a dangling reference to `PRD.md` from the README's Roadmap
-  section — that file is gitignored and was never pushed to GitHub, so
-  the reference pointed nowhere for anyone reading the public repo.
+Nothing pending.
 
 ## [0.1.2] - 2026-08-13
 
